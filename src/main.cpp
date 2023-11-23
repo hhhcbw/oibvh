@@ -1,38 +1,44 @@
 // Dear ImGui: standalone example application for GLFW + OpenGL 3, using programmable pipeline
-// (GLFW is a cross-platform general purpose library for handling windows, inputs, OpenGL/Vulkan/Metal graphics context creation, etc.)
-// If you are new to Dear ImGui, read documentation from the docs/ folder + read the top of imgui.cpp.
+// (GLFW is a cross-platform general purpose library for handling windows, inputs, OpenGL/Vulkan/Metal graphics context
+// creation, etc.) If you are new to Dear ImGui, read documentation from the docs/ folder + read the top of imgui.cpp.
 // Read online: https://github.com/ocornut/imgui/tree/master/docs
 
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_opengl3.h>
 #include <stdio.h>
 #include <glad/glad.h>
+#include <stb_image.h>
 #include <iostream>
-#if defined(IMGUI_IMPL_OPENGL_ES2)
-#include <GLES2/gl2.h>
-#endif
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
 #include <GLFW/glfw3.h> // Will drag system OpenGL headers
 
-// [Win32] Our example includes a copy of glfw3.lib pre-compiled with VS2010 to maximize ease of testing and compatibility with old VS compilers.
-// To link with VS2010-era libraries, VS2015+ requires linking with legacy_stdio_definitions.lib, which we do using this pragma.
-// Your own project should not be affected, as you are likely to link with a newer binary of GLFW that is adequate for your version of Visual Studio.
-#if defined(_MSC_VER) && (_MSC_VER >= 1900) && !defined(IMGUI_DISABLE_WIN32_FUNCTIONS)
-#pragma comment(lib, "legacy_stdio_definitions")
-#endif
+#include "shader.h"
+#include "mesh.h"
+#include "model.h"
+#include "camera.h"
 
-const char* vertexShaderSource = "#version 330 core\n"
-"layout (location = 0) in vec3 aPos;\n"
-"void main()\n"
-"{\n"
-"   gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
-"}\0";
-const char* fragmentShaderSource = "#version 330 core\n"
-"out vec4 FragColor;\n"
-"void main()\n"
-"{\n"
-"   FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);\n"
-"}\n\0";
+void mouse_callback(GLFWwindow* window, double xpos, double ypos);
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
+void processInput(GLFWwindow* window);
+
+// settings
+const unsigned int SCR_WIDTH = 1280;
+const unsigned int SCR_HEIGHT = 720;
+
+// camera
+Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+float lastX = SCR_WIDTH / 2.0f;
+float lastY = SCR_HEIGHT / 2.0f;
+bool firstMouse = true;
+
+// timing
+float deltaTime = 0.0f;
+float lastFrame = 0.0f;
+
+bool free_view = false;
 
 static void glfw_error_callback(int error, const char* description)
 {
@@ -46,74 +52,69 @@ int main(int, char**)
     if (!glfwInit())
         return 1;
 
-    // Decide GL+GLSL versions
-#if defined(IMGUI_IMPL_OPENGL_ES2)
-    // GL ES 2.0 + GLSL 100
-    const char* glsl_version = "#version 100";
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
-#elif defined(__APPLE__)
-    // GL 3.2 + GLSL 150
-    const char* glsl_version = "#version 150";
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // Required on Mac
-#else
-    // GL 3.0 + GLSL 130
+    // GL 3.3 + GLSL 130
     const char* glsl_version = "#version 130";
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-    //glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
-    //glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // 3.0+ only
-#endif
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); // 3.2+ only
+    // glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // 3.0+ only
 
     // Create window with graphics context
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "Dear ImGui GLFW+OpenGL3 example", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Dear ImGui GLFW+OpenGL3 example", NULL, NULL);
     if (window == NULL)
         return 1;
     glfwMakeContextCurrent(window);
+    glfwSetCursorPosCallback(window, mouse_callback);
+    glfwSetScrollCallback(window, scroll_callback);
+
+    // tell GLFW to capture our mouse
+    // glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     glfwSwapInterval(1); // Enable vsync
 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+    ImGuiIO& io = ImGui::GetIO();
+    (void)io;
+    // io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+    // io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
-    //ImGui::StyleColorsClassic();
+    // ImGui::StyleColorsClassic();
 
     // Setup Platform/Renderer backends
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     // Load Fonts
-    // - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
+    // - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use
+    // ImGui::PushFont()/PopFont() to select them.
     // - AddFontFromFileTTF() will return the ImFont* so you can store it if you need to select the font among multiple.
-    // - If the file cannot be loaded, the function will return NULL. Please handle those errors in your application (e.g. use an assertion, or display an error and quit).
-    // - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling ImFontAtlas::Build()/GetTexDataAsXXXX(), which ImGui_ImplXXXX_NewFrame below will call.
+    // - If the file cannot be loaded, the function will return NULL. Please handle those errors in your application
+    // (e.g. use an assertion, or display an error and quit).
+    // - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling
+    // ImFontAtlas::Build()/GetTexDataAsXXXX(), which ImGui_ImplXXXX_NewFrame below will call.
     // - Read 'docs/FONTS.md' for more instructions and details.
-    // - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
-    //io.Fonts->AddFontDefault();
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf", 16.0f);
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/ProggyTiny.ttf", 10.0f);
-    //ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
-    //IM_ASSERT(font != NULL);
+    // - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double
+    // backslash \\ !
+    // io.Fonts->AddFontDefault();
+    // io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf", 16.0f);
+    // io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
+    // io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);
+    // io.Fonts->AddFontFromFileTTF("../../misc/fonts/ProggyTiny.ttf", 10.0f);
+    // ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, NULL,
+    // io.Fonts->GetGlyphRangesJapanese()); IM_ASSERT(font != NULL);
 
     // Our state
-    bool show_demo_window = true;
+    bool show_demo_window = false;
     bool show_another_window = false;
     bool draw_triangle = false;
+    bool draw_bunny = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
     // glad: load all OpenGL function pointers
-// ---------------------------------------
+    // ---------------------------------------
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     {
         std::cout << "Failed to initialize GLAD" << std::endl;
@@ -121,89 +122,63 @@ int main(int, char**)
     }
 
     // build and compile our shader program
-    // ------------------------------------
-    // vertex shader
-    unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
-    glCompileShader(vertexShader);
-    // check for shader compile errors
-    int success;
-    char infoLog[512];
-    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
-        std::cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
-    }
-    // fragment shader
-    unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
-    glCompileShader(fragmentShader);
-    // check for shader compile errors
-    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
-        std::cout << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n" << infoLog << std::endl;
-    }
-    // link shaders
-    unsigned int shaderProgram = glCreateProgram();
-    glAttachShader(shaderProgram, vertexShader);
-    glAttachShader(shaderProgram, fragmentShader);
-    glLinkProgram(shaderProgram);
-    // check for linking errors
-    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
-    if (!success) {
-        glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
-        std::cout << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
-    }
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
+    const char vertexPath[] = "C://Code//lightPsep//shaders//temp_vertex_shader.glsl";
+    const char fragmentPath[] = "C://Code//lightPsep//shaders//temp_fragment_shader.glsl";
+    Shader shader(vertexPath, fragmentPath);
+
+    const char vertexMeshPath[] = "C://Code//lightPsep//shaders//mesh_vertex_shader.glsl";
+    const char fragmentMeshPath[] = "C://Code//lightPsep//shaders//mesh_fragment_shader.glsl";
+    Shader shaderMesh(vertexMeshPath, fragmentMeshPath);
 
     // set up vertex data (and buffer(s)) and configure vertex attributes
     // ------------------------------------------------------------------
-    float vertices[] = {
-        0.5f, 0.5f, 0.0f,   // 右上角
-        0.5f, -0.5f, 0.0f,  // 右下角
-        -0.5f, -0.5f, 0.0f, // 左下角
-        -0.5f, 0.5f, 0.0f   // 左上角
-    };
+    std::vector<Vertex> vertices(4);
+    vertices[0].m_position = {0.5f, 0.5f, 0.0f};
+    vertices[1].m_position = {0.5f, -0.5f, 0.0f};
+    vertices[2].m_position = {-0.5f, 0.5f, 0.0f};
+    vertices[3].m_position = {-0.5f, -0.5f, 0.0f};
 
-    unsigned int indices[] = {
-        // 注意索引从0开始! 
+    std::vector<unsigned int> indices{
+        // 注意索引从0开始!
         // 此例的索引(0,1,2,3)就是顶点数组vertices的下标，
         // 这样可以由下标代表顶点组合成矩形
 
-        0, 1, 3, // 第一个三角形
-        1, 2, 3  // 第二个三角形
+        0,
+        1,
+        2, // 第一个三角形
+        1,
+        3,
+        2 // 第二个三角形
     };
 
-    unsigned int EBO;
-    glGenBuffers(1, &EBO);
+    Mesh mesh(vertices, indices);
 
-    unsigned int VBO, VAO;
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-    // 1. 绑定顶点数组对象
-    glBindVertexArray(VAO);
-    // 2. 把我们的顶点数组复制到一个顶点缓冲中，供OpenGL使用
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-    // 3. 复制我们的索引数组到一个索引缓冲中，供OpenGL使用
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-    // 4. 设定顶点属性指针
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
+    // tell stb_image.h to flip loaded texture's on the y-axis (before loading model).
+    stbi_set_flip_vertically_on_load(true);
+    Model model("C://Code//lightPsep//objects//bunny.obj");
+
+    glEnable(GL_DEPTH_TEST);
 
     // Main loop
     while (!glfwWindowShouldClose(window))
     {
+        // per-frame time logic
+        // --------------------
+        float currentFrame = static_cast<float>(glfwGetTime());
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
+
+        // input
+        // -----
+        processInput(window);
         // Poll and handle events (inputs, window resize, etc.)
-        // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
-        // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
-        // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
-        // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
+        // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your
+        // inputs.
+        // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or
+        // clear/overwrite your copy of the mouse data.
+        // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or
+        // clear/overwrite your copy of the keyboard data. Generally you may always pass all inputs to dear imgui, and
+        // hide them from your application based on those two flags.
         glfwPollEvents();
 
         // Start the Dear ImGui frame
@@ -211,7 +186,8 @@ int main(int, char**)
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
+        // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code
+        // to learn more about Dear ImGui!).
         if (show_demo_window)
             ImGui::ShowDemoWindow(&show_demo_window);
 
@@ -220,29 +196,35 @@ int main(int, char**)
             static float f = 0.0f;
             static int counter = 0;
 
-            ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+            ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
 
-            ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-            ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
+            ImGui::Text("This is some useful text.");          // Display some text (you can use a format strings too)
+            ImGui::Checkbox("Demo Window", &show_demo_window); // Edit bools storing our window open/close state
             ImGui::Checkbox("Another Window", &show_another_window);
             ImGui::Checkbox("Draw triangle", &draw_triangle);
-
+            ImGui::Checkbox("Draw bunny", &draw_bunny);
+            ImGui::Checkbox("Free view", &free_view);
             ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
             ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
 
-            if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
+            if (ImGui::Button(
+                    "Button")) // Buttons return true when clicked (most widgets return true when edited/activated)
                 counter++;
             ImGui::SameLine();
             ImGui::Text("counter = %d", counter);
 
-            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)",
+                        1000.0f / ImGui::GetIO().Framerate,
+                        ImGui::GetIO().Framerate);
             ImGui::End();
         }
 
         // 3. Show another simple window.
         if (show_another_window)
         {
-            ImGui::Begin("Another Window", &show_another_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+            ImGui::Begin("Another Window",
+                         &show_another_window); // Pass a pointer to our bool variable (the window will have a closing
+                                                // button that will clear the bool when clicked)
             ImGui::Text("Hello from another window!");
             if (ImGui::Button("Close Me"))
                 show_another_window = false;
@@ -253,15 +235,44 @@ int main(int, char**)
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
         glViewport(0, 0, display_w, display_h);
-        glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClearColor(
+            clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+        // glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         if (draw_triangle)
         {
-            glUseProgram(shaderProgram);
-            glBindVertexArray(VAO);
-            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-            glBindVertexArray(0);
+            shader.activate();
+            // view/projection transformations
+            glm::mat4 projection =
+                glm::perspective(glm::radians(camera.getZoom()), (float)display_w / (float)display_h, 0.1f, 100.0f);
+            glm::mat4 view = camera.getViewMatrix();
+            shader.setMat4("view", view);
+            shader.setMat4("projection", projection);
+
+            // render the loaded model
+            glm::mat4 modelMat = glm::mat4(1.0f);
+            shader.setMat4("model", modelMat);
+            mesh.draw(shader);
         }
+        if (draw_bunny)
+        {
+            shaderMesh.activate();
+            // view/projection transformations
+            glm::mat4 projection =
+                glm::perspective(glm::radians(camera.getZoom()), (float)display_w / (float)display_h, 0.1f, 100.0f);
+            glm::mat4 view = camera.getViewMatrix();
+            shaderMesh.setMat4("view", view);
+            shaderMesh.setMat4("projection", projection);
+
+            // render the loaded model
+            glm::mat4 modelMat = glm::mat4(1.0f);
+            shaderMesh.setMat4("model", modelMat);
+            model.draw(shaderMesh);
+        }
+
+        free_view ? glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED)
+                  : glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);
@@ -272,12 +283,73 @@ int main(int, char**)
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteBuffers(1, &VBO);
-    glDeleteProgram(shaderProgram);
-
     glfwDestroyWindow(window);
     glfwTerminate();
 
     return 0;
+}
+
+// process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
+// ---------------------------------------------------------------------------------------------------------
+void processInput(GLFWwindow* window)
+{
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+    {
+        glfwSetWindowShouldClose(window, true);
+    }
+
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+    {
+        free_view = !free_view;
+    }
+
+    if (free_view)
+    { // control camera
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+            camera.processKeyboard(FORWARD, deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+            camera.processKeyboard(BACKWARD, deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+            camera.processKeyboard(LEFT, deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+            camera.processKeyboard(RIGHT, deltaTime);
+    }
+}
+
+// glfw: whenever the mouse moves, this callback is called
+// -------------------------------------------------------
+void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
+{
+    if (!free_view)
+    {
+        return;
+    }
+
+    float xpos = static_cast<float>(xposIn);
+    float ypos = static_cast<float>(yposIn);
+
+    if (firstMouse)
+    {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
+
+    float xoffset = xpos - lastX;
+    float yoffset = lastY - ypos; // reversed since y-coordinates go from bottom to top
+
+    lastX = xpos;
+    lastY = ypos;
+
+    camera.processMouseMovement(xoffset, yoffset);
+}
+
+// glfw: whenever the mouse scroll wheel scrolls, this callback is called
+// ----------------------------------------------------------------------
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
+{
+    if (free_view)
+    {
+        camera.processMouseScroll(static_cast<float>(yoffset));
+    }
 }
