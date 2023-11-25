@@ -15,10 +15,11 @@
 #include <assimp/postprocess.h>
 #include <GLFW/glfw3.h> // Will drag system OpenGL headers
 
-#include "shader.h"
-#include "mesh.h"
-#include "model.h"
-#include "camera.h"
+#include "utils/shader.h"
+#include "utils/mesh.h"
+#include "utils/model.h"
+#include "utils/camera.h"
+#include "cuda/oibvh.cuh"
 
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
@@ -47,6 +48,8 @@ static void glfw_error_callback(int error, const char* description)
 
 int main(int, char**)
 {
+    cuda_func();
+
     // Setup window
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())

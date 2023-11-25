@@ -10,7 +10,7 @@
 #include <sstream>
 #include <iostream>
 
-#include "model.h"
+#include "utils/model.h"
 
 Model::Model(const std::string& path, const bool gamma) : m_gammaCorrection(gamma)
 {
