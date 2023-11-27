@@ -3,7 +3,6 @@
 #include <vector>
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <device_launch_parameters.h>
 #include <glm/glm.hpp>
 
 #include "utils/mesh.h"

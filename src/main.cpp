@@ -123,12 +123,12 @@ int main(int, char**)
     }
 
     // build and compile our shader program
-    const char vertexPath[] = "C://Code//lightPsep//shaders//temp_vertex_shader.glsl";
-    const char fragmentPath[] = "C://Code//lightPsep//shaders//temp_fragment_shader.glsl";
+    const char vertexPath[] = "C://Code//oibvh//shaders//temp_vertex_shader.glsl";
+    const char fragmentPath[] = "C://Code//oibvh//shaders//temp_fragment_shader.glsl";
     Shader shader(vertexPath, fragmentPath);
 
-    const char vertexMeshPath[] = "C://Code//lightPsep//shaders//mesh_vertex_shader.glsl";
-    const char fragmentMeshPath[] = "C://Code//lightPsep//shaders//mesh_fragment_shader.glsl";
+    const char vertexMeshPath[] = "C://Code//oibvh//shaders//mesh_vertex_shader.glsl";
+    const char fragmentMeshPath[] = "C://Code//oibvh//shaders//mesh_fragment_shader.glsl";
     Shader shaderMesh(vertexMeshPath, fragmentMeshPath);
 
     // set up vertex data (and buffer(s)) and configure vertex attributes
@@ -158,7 +158,7 @@ int main(int, char**)
 
     // tell stb_image.h to flip loaded texture's on the y-axis (before loading model).
     stbi_set_flip_vertically_on_load(true);
-    Model model("C://Code//lightPsep//objects//bunny.obj");
+    Model model("C://Code//oibvh//objects//bunny.obj");
 
     glEnable(GL_DEPTH_TEST);
 
