@@ -19,7 +19,7 @@
 #include "utils/mesh.h"
 #include "utils/model.h"
 #include "utils/camera.h"
-#include "cuda/oibvh.cuh"
+#include "cuda/oibvhTree.cuh"
 
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
@@ -48,8 +48,6 @@ static void glfw_error_callback(int error, const char* description)
 
 int main(int, char**)
 {
-    cuda_func();
-
     // Setup window
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
@@ -154,7 +152,9 @@ int main(int, char**)
         2 // 第二个三角形
     };
 
-    Mesh mesh(vertices, indices);
+    std::shared_ptr<Mesh> meshSPtr(new Mesh(vertices, indices));
+    oibvhTree tree(meshSPtr);
+    tree.build();
 
     // tell stb_image.h to flip loaded texture's on the y-axis (before loading model).
     stbi_set_flip_vertically_on_load(true);
@@ -255,7 +255,7 @@ int main(int, char**)
             // render the loaded model
             glm::mat4 modelMat = glm::mat4(1.0f);
             shader.setMat4("model", modelMat);
-            mesh.draw(shader);
+            meshSPtr->draw(shader);
         }
         if (draw_bunny)
         {

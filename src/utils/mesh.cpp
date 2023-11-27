@@ -63,11 +63,6 @@ void Mesh::draw(const Shader& shader) const
     glActiveTexture(GL_TEXTURE0);
 }
 
-aabb_box_t Mesh::getAABB() const
-{
-    return m_aabb;
-}
-
 void Mesh::setupAABB()
 {
     m_aabb.minimum = glm::vec3(1e10);

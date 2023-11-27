@@ -23,11 +23,6 @@ void Model::draw(const Shader& shader) const
         m_meshes[i]->draw(shader);
 }
 
-aabb_box_t Model::getAABB() const
-{
-    return m_aabb;
-}
-
 void Model::loadModel(const std::string& path)
 {
     // load start
@@ -63,7 +58,7 @@ void Model::loadModel(const std::string& path)
         m_facesCount += m_meshes[i]->m_facesCount;
         std::cout << "mesh" << i << ": " << m_meshes[i]->m_verticesCount << " vertices, " << m_meshes[i]->m_facesCount
                   << " faces, ";
-        const aabb_box_t aabb = m_meshes[i]->getAABB();
+        const aabb_box_t aabb = m_meshes[i]->m_aabb;
         std::cout << "aabb (" << aabb.minimum.x << "," << aabb.minimum.y << "," << aabb.minimum.z << ")X";
         std::cout << "(" << aabb.maximum.x << "," << aabb.maximum.y << "," << aabb.maximum.z << ")" << std::endl;
         m_aabb.maximum.x = std::fmax(aabb.maximum.x, m_aabb.maximum.x);

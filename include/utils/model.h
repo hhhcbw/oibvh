@@ -97,6 +97,14 @@ public:
      * @brief Count of faces in model
      */
     unsigned int m_facesCount;
+    /**
+     * @brief  AABB bounding box of model
+     */
+    aabb_box_t m_aabb;
+    /**
+     * @brief  All shared pointer of meshes in model
+     */
+    std::vector<std::shared_ptr<Mesh>> m_meshes;
 
 private:
     /**
@@ -105,17 +113,9 @@ private:
      */
     std::vector<Texture> m_texturesLoaded;
     /**
-     * @brief  All shared pointer of meshes in model
-     */
-    std::vector<std::shared_ptr<Mesh>> m_meshes;
-    /**
      * @brief  Directory of model file
      */
     std::string m_directory;
-    /**
-     * @brief  AABB bounding box of model
-     */
-    aabb_box_t m_aabb;
     /**
      * @brief  Have gamma correction for texture or not
      */

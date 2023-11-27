@@ -93,12 +93,6 @@ public:
      */
     void draw(const Shader& shader) const;
 
-    /**
-     * @brief       Get aabb bounding box of mesh
-     * @return      Bounding box of mesh
-     */
-    aabb_box_t getAABB() const;
-
 private:
     /**
      * @brief       Set aabb bounding box of mesh
@@ -121,8 +115,6 @@ public:
      * @brief Count of faces in mesh
      */
     unsigned int m_facesCount;
-
-private:
     /**
      * @brief Vertices data of mesh for vertex array buffer
      */
@@ -132,13 +124,15 @@ private:
      */
     std::vector<unsigned int> m_indices;
     /**
-     * @brief Textures data of mesh
-     */
-    std::vector<Texture> m_textures;
-    /**
      * @brief AABB bounding box of mesh
      */
     aabb_box_t m_aabb;
+
+private:
+    /**
+     * @brief Textures data of mesh
+     */
+    std::vector<Texture> m_textures;
     /**
      * @brief Vertex arrays object id
      */
