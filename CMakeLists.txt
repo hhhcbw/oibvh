@@ -28,7 +28,7 @@ aux_source_directory(${oibvh_SRC_DIR}/utils oibvh_SRC)
 aux_source_directory(${oibvh_SRC_DIR}/cuda oibvh_SRC)
 message(STATUS "oibvh source files: ${oibvh_SRC}")
 
-add_executable(oibvh ${oibvh_SRC})
+add_executable(oibvh ${oibvh_SRC} "src/utils/utils.cpp")
 target_include_directories(oibvh PUBLIC ${oibvh_INCLUDE_DIR} ${THIRD_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 message(STATUS "third libs: ${THIRD_LIBS}")
 target_link_libraries(oibvh PUBLIC ${THIRD_LIBS})

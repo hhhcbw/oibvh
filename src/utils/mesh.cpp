@@ -69,13 +69,8 @@ void Mesh::setupAABB()
     m_aabb.maximum = glm::vec3(-1e10);
     for (const auto& vertex : m_vertices)
     {
-        m_aabb.maximum.x = std::fmax(vertex.m_position.x, m_aabb.maximum.x);
-        m_aabb.maximum.y = std::fmax(vertex.m_position.y, m_aabb.maximum.y);
-        m_aabb.maximum.z = std::fmax(vertex.m_position.z, m_aabb.maximum.z);
-
-        m_aabb.minimum.x = std::fmin(vertex.m_position.x, m_aabb.minimum.x);
-        m_aabb.minimum.y = std::fmin(vertex.m_position.y, m_aabb.minimum.y);
-        m_aabb.minimum.z = std::fmin(vertex.m_position.z, m_aabb.minimum.z);
+        m_aabb.maximum = glm::max(vertex.m_position, m_aabb.maximum);
+        m_aabb.minimum = glm::min(vertex.m_position, m_aabb.minimum);
     }
 }
 

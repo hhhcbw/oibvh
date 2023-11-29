@@ -37,12 +37,6 @@ public:
      */
     void draw(const Shader& shader) const;
 
-    /**
-     * @brief       Get aabb bounding box of model
-     * @return      AABB bounding box of model
-     */
-    aabb_box_t getAABB() const;
-
 private:
     /**
      * @brief      Loads a model with supported ASSIMP extensions from file and
