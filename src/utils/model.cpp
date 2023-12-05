@@ -17,10 +17,10 @@ Model::Model(const std::string& path, const bool gamma) : m_gammaCorrection(gamm
     loadModel(path);
 }
 
-void Model::draw(const Shader& shader) const
+void Model::draw(const Shader& shader, const bool haveWireframe) const
 {
     for (unsigned int i = 0; i < m_meshes.size(); i++)
-        m_meshes[i]->draw(shader);
+        m_meshes[i]->draw(shader, haveWireframe);
 }
 
 void Model::loadModel(const std::string& path)

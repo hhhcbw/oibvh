@@ -2,18 +2,19 @@
 
 out vec4 FragColor;
 
-in vec3 FragPos;  
-  
-uniform vec3 lightPos; 
-uniform vec3 viewPos; 
+in vec3 FragPos;
+
+uniform vec3 lightPos;
+uniform vec3 viewPos;
 uniform vec3 lightColor;
 uniform vec3 objectColor;
-uniform int wireframe;
+uniform bool wireframe;
 void main()
 {
-    vec3 lightDir = normalize(lightPos - FragPos);   
-    if(wireframe == 0){
-    FragColor = vec4(lightDir, 1.0);
+    vec3 lightDir = normalize(lightPos - FragPos);
+    if (!wireframe)
+    {
+        FragColor = vec4(vec3(1), 1.0);
     }
     else
     {

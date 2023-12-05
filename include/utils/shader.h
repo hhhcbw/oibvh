@@ -36,6 +36,12 @@ public:
      */
     void activate() const;
 
+    /**
+     * @brief  Deactivate the shader
+     * @return void
+     */
+    void deactivate() const;
+
 #pragma region shaderSetUniform
     /**
      * @brief      Set bool value at uniform location

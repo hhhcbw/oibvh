@@ -32,10 +32,11 @@ public:
 
     /**
      * @brief       Draws the model, and thus all its meshes.
-     * @param[in]   shader    Shader to use
+     * @param[in]   shader               Shader to use
+     * @param[in]   haveWireFrame        Have wire frame or not
      * @return      void
      */
-    void draw(const Shader& shader) const;
+    void draw(const Shader& shader, const bool haveWireFrame = false) const;
 
 private:
     /**

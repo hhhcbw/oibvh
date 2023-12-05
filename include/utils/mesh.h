@@ -88,10 +88,11 @@ public:
 
     /**
      * @brief       Render the mesh with specific shader
-     * @param[in]   shader     Shader to use
+     * @param[in]   shader               Shader to use
+     * @param[in]   haveWireframe        Have wire frame or not
      * @return      void
      */
-    void draw(const Shader& shader) const;
+    void draw(const Shader& shader, const bool haveWireframe = false) const;
 
 private:
     /**

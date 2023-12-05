@@ -1,5 +1,6 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <fstream>
 #include <thrust/sort.h>
 #include <thrust/device_ptr.h>
 
@@ -7,9 +8,85 @@
 #include "cuda/oibvh.cuh"
 #include "cuda/utils.cuh"
 
-oibvhTree::oibvhTree(const std::shared_ptr<Mesh> mesh) : m_mesh(mesh)
+oibvhTree::oibvhTree(const std::shared_ptr<Mesh> mesh) : m_mesh(mesh), m_convertDone(false), m_buildDone(false)
 {
     setup();
+}
+
+void oibvhTree::draw(const Shader& shader)
+{
+
+    if (!m_convertDone)
+    {
+        convertToVertexArray();
+    }
+
+    glBindVertexArray(m_vertexArrayObj);
+    glDrawElements(GL_LINES, static_cast<unsigned int>(m_indices.size()), GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0U);
+}
+
+void oibvhTree::convertToVertexArray()
+{
+    assert(m_buildDone);
+
+    const int primitiveCount = m_faces.size();
+    const int numNodesInTree = m_aabbTree.size();
+    const int internalNodes = numNodesInTree - primitiveCount;
+    const int renderNodes = std::min(internalNodes, 256);
+
+    for (int i = 0; i < renderNodes; i++)
+    {
+        aabb_box_t aabb = m_aabbTree[i];
+
+        // make cube
+        std::vector<glm::vec3> cubeVertices;
+        std::vector<unsigned int> cubeIndices;
+
+        make_cube(0.5f * (aabb.maximum.x - aabb.minimum.x),
+                  0.5f * (aabb.maximum.y - aabb.minimum.y),
+                  0.5 * (aabb.maximum.z - aabb.minimum.z),
+                  cubeVertices,
+                  cubeIndices);
+
+        int backFaceLowerLeftVertexIndex = 4;
+        glm::vec3 backFaceLowerLeftVertex = cubeVertices[backFaceLowerLeftVertexIndex];
+        glm::vec3 diff = aabb.minimum - backFaceLowerLeftVertex;
+
+        // shift the bounding box to its real position
+        for (int i = 0; i < (int)cubeVertices.size(); ++i)
+        {
+            glm::vec3 pos = cubeVertices[i] + diff;
+            m_vertices.push_back(pos);
+        }
+
+        // offset indices
+        for (int j = 0; j < (int)cubeIndices.size(); ++j)
+        {
+            cubeIndices[j] += cubeVertices.size() * i;
+        }
+
+        m_indices.insert(m_indices.end(), cubeIndices.begin(), cubeIndices.end());
+    }
+
+    glGenVertexArrays(1U, &m_vertexArrayObj);
+    glGenBuffers(1U, &m_vertexBufferObj);
+    glGenBuffers(1U, &m_elementBufferObj);
+
+    glBindVertexArray(m_vertexArrayObj);
+    glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObj);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * m_vertices.size(), m_vertices.data(), GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_elementBufferObj);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * m_indices.size(), m_indices.data(), GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0U);
+    glVertexAttribPointer(0U, 3U, GL_FLOAT, GL_FALSE, 0, (void*)0); // position
+
+    glBindVertexArray(0U);
+
+    // convert done
+    m_convertDone = true;
 }
 
 void oibvhTree::setup()
@@ -48,8 +125,8 @@ void oibvhTree::build()
     deviceMalloc(&d_faces, primitive_count);
     deviceMalloc(&d_aabbs, oibvh_size);
     deviceMalloc(&d_mortons, primitive_count);
-    deviceMemcpy(d_positions, &m_positions[0], vertex_count);
-    deviceMemcpy(d_faces, &m_faces[0], primitive_count);
+    deviceMemcpy(d_positions, m_positions.data(), vertex_count);
+    deviceMemcpy(d_faces, m_faces.data(), primitive_count);
 
     elapsed_ms = kernelLaunch([&]() {
         dim3 blockSize = dim3(256);
@@ -147,19 +224,30 @@ void oibvhTree::build()
     }
 
 #if 0
-    // print result
+    // log result
     aabb_box_t* temp_aabbs;
-    hostMalloc(&temp_aabbs, 100);
-    hostMemcpy(temp_aabbs, d_aabbs, 100);
-    for (int i = 0; i < 100; i++)
+    hostMalloc(&temp_aabbs, oibvh_size);
+    hostMemcpy(temp_aabbs, d_aabbs, oibvh_size);
+    std::ofstream outfile;
+    outfile.open("C://Code//oibvh//logs//bvh_log.txt");
+    for (int i = 0; i < oibvh_size; i++)
     {
-        std::cout << temp_aabbs[i].minimum << "," << temp_aabbs[i].maximum << std::endl;
+        outfile << temp_aabbs[i].minimum << "," << temp_aabbs[i].maximum << std::endl;
     }
-    std::cout << m_mesh->m_aabb.minimum << "," << m_mesh->m_aabb.maximum << std::endl;
+    //std::cout << m_mesh->m_aabb.minimum << "," << m_mesh->m_aabb.maximum << std::endl;
 #endif
 
+    // copy result to host
+    m_aabbTree.resize(oibvh_size);
+    hostMemcpy(m_aabbTree.data(), d_aabbs, oibvh_size);
+    hostMemcpy(m_faces.data(), d_faces, primitive_count);
+
+    // free memory
     cudaFree(d_positions);
     cudaFree(d_faces);
     cudaFree(d_aabbs);
     cudaFree(d_mortons);
+
+    // build done
+    m_buildDone = true;
 }

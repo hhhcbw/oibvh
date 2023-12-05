@@ -99,6 +99,11 @@ void Shader::activate() const
     glUseProgram(m_id);
 }
 
+void Shader::deactivate() const
+{
+    glUseProgram(0U);
+}
+
 #pragma region shaderSetUniform
 void Shader::setBool(const std::string& name, bool value) const
 {

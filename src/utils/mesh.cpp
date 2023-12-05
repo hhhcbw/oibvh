@@ -26,7 +26,7 @@ Mesh::~Mesh()
     glDeleteBuffers(1, &m_elementBufferObj);
 }
 
-void Mesh::draw(const Shader& shader) const
+void Mesh::draw(const Shader& shader, const bool haveWireframe) const
 {
     // bind appropriate textures
     unsigned int diffuseNr = 1;
@@ -56,7 +56,16 @@ void Mesh::draw(const Shader& shader) const
 
     // draw mesh
     glBindVertexArray(m_vertexArrayObj);
+    shader.setBool("wireframe", false);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(m_indices.size()), GL_UNSIGNED_INT, 0);
+    if (haveWireframe)
+    {
+        shader.setBool("wireframe", true);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(m_indices.size()), GL_UNSIGNED_INT, 0);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    }
     glBindVertexArray(0);
 
     // always good practice to set everything back to defaults once configured.
@@ -87,10 +96,10 @@ void Mesh::setupMesh()
     // A great thing about structs is that their memory layout is sequential for all its items.
     // The effect is that we can simply pass a pointer to the struct and it translates perfectly to a glm::vec3/2
     // array which again translates to 3/2 floats which translates to a byte array.
-    glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(Vertex), &m_vertices[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(Vertex), m_vertices.data(), GL_STATIC_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_elementBufferObj);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_indices.size() * sizeof(unsigned int), &m_indices[0], GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_indices.size() * sizeof(unsigned int), m_indices.data(), GL_STATIC_DRAW);
 
     // set the vertex attribute pointers
     // vertex Positions

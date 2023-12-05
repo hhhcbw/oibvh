@@ -30,7 +30,7 @@ const unsigned int SCR_WIDTH = 1280;
 const unsigned int SCR_HEIGHT = 720;
 
 // camera
-Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+Camera camera(glm::vec3(0.0f, 0.7f, 2.5f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
@@ -112,6 +112,7 @@ int main(int, char**)
     bool show_another_window = false;
     bool draw_triangle = false;
     bool draw_bunny = false;
+    bool draw_box = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
     // glad: load all OpenGL function pointers
@@ -130,6 +131,10 @@ int main(int, char**)
     const char vertexMeshPath[] = "C://Code//oibvh//shaders//mesh_vertex_shader.glsl";
     const char fragmentMeshPath[] = "C://Code//oibvh//shaders//mesh_fragment_shader.glsl";
     Shader shaderMesh(vertexMeshPath, fragmentMeshPath);
+
+    const char vertexBVHPath[] = "C://Code//oibvh//shaders//bvh_vertex_shader.glsl";
+    const char fragmentBVHPath[] = "C://Code//oibvh//shaders//bvh_fragment_shader.glsl";
+    Shader shaderBVH(vertexBVHPath, fragmentBVHPath);
 
     // set up vertex data (and buffer(s)) and configure vertex attributes
     // ------------------------------------------------------------------
@@ -157,6 +162,7 @@ int main(int, char**)
     // tell stb_image.h to flip loaded texture's on the y-axis (before loading model).
     stbi_set_flip_vertically_on_load(true);
     Model model("C://Code//oibvh//objects//bunny.obj");
+    // Model model("C://Code//oibvh//objects//dragon.obj");
     oibvhTree tree(model.m_meshes[0]);
     // oibvhTree tree(meshSPtr);
     tree.build();
@@ -207,6 +213,8 @@ int main(int, char**)
             ImGui::Checkbox("Another Window", &show_another_window);
             ImGui::Checkbox("Draw triangle", &draw_triangle);
             ImGui::Checkbox("Draw bunny", &draw_bunny);
+            ImGui::SameLine();
+            ImGui::Checkbox("Draw box", &draw_box);
             ImGui::Checkbox("Free view", &free_view);
             ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
             ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
@@ -256,7 +264,9 @@ int main(int, char**)
             // render the loaded model
             glm::mat4 modelMat = glm::mat4(1.0f);
             shader.setMat4("model", modelMat);
-            meshSPtr->draw(shader);
+            meshSPtr->draw(shader, true);
+
+            shader.deactivate();
         }
         if (draw_bunny)
         {
@@ -271,7 +281,19 @@ int main(int, char**)
             // render the loaded model
             glm::mat4 modelMat = glm::mat4(1.0f);
             shaderMesh.setMat4("model", modelMat);
-            model.draw(shaderMesh);
+            model.draw(shaderMesh, true);
+
+            shader.deactivate();
+
+            if (draw_box)
+            {
+                shaderBVH.activate();
+                glm::mat4 modelViewProjection = projection * view * modelMat;
+                shaderBVH.setMat4("modelViewProjection", modelViewProjection);
+                tree.draw(shaderBVH);
+
+                shaderBVH.deactivate();
+            }
         }
 
         free_view ? glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED)

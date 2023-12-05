@@ -8,6 +8,7 @@
 #pragma once
 
 #include <iostream>
+#include <vector>
 
 #include <glm/glm.hpp>
 
@@ -29,3 +30,17 @@ typedef struct aabb_box
  * @return    Output stream
  */
 std::ostream& operator<<(std::ostream& os, const glm::vec3& gvec3);
+
+/**
+ * @brief      Make cube vertices array and indices for aabb bounding box
+ * @param[in]  xSize              Half of x size of aabb bounding box
+ * @param[in]  ySize              Half of y size of aabb bounding box
+ * @param[in]  zSize              Half of z size of aabb bounding box
+ * @param[in]  cubeVertices       Vertices array of cube
+ * @param[in]  cubeIndices        Indices array of cube
+ */
+void make_cube(const float xSize,
+               const float ySize,
+               const float zSize,
+               std::vector<glm::vec3>& cubeVertices,
+               std::vector<unsigned int>& cubeIndices);
