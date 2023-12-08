@@ -17,6 +17,20 @@ Model::Model(const std::string& path, const bool gamma) : m_gammaCorrection(gamm
     loadModel(path);
 }
 
+Model::Model(const Model& other)
+    : m_verticesCount(other.m_verticesCount)
+    , m_facesCount(other.m_facesCount)
+    , m_aabb(other.m_aabb)
+    , m_texturesLoaded(other.m_texturesLoaded)
+    , m_directory(other.m_directory)
+    , m_gammaCorrection(other.m_gammaCorrection)
+{
+    for (unsigned int i = 0; i < other.m_meshes.size(); i++)
+    {
+        m_meshes.push_back(std::make_shared<Mesh>(*other.m_meshes[i]));
+    }
+}
+
 void Model::draw(const Shader& shader, const bool haveWireframe) const
 {
     for (unsigned int i = 0; i < m_meshes.size(); i++)

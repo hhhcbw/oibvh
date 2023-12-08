@@ -3,6 +3,7 @@
 #include <iostream>
 
 #include "utils/mesh.h"
+#include "cuda/transform.cuh"
 
 Mesh::Mesh(const std::vector<Vertex>& vertices,
            const std::vector<unsigned int>& indices,
@@ -16,6 +17,20 @@ Mesh::Mesh(const std::vector<Vertex>& vertices,
     // calculate bounding box of mesh
     setupAABB();
     // now that we have all the required data, set the vertex buffers and its attribute pointers.
+    setupMesh();
+    // calculate center of mesh
+    setupCenter();
+}
+
+Mesh::Mesh(const Mesh& other)
+    : m_vertices(other.m_vertices)
+    , m_indices(other.m_indices)
+    , m_textures(other.m_textures)
+    , m_verticesCount(other.m_verticesCount)
+    , m_facesCount(other.m_facesCount)
+    , m_aabb(other.m_aabb)
+    , m_center(other.m_center)
+{
     setupMesh();
 }
 
@@ -96,7 +111,7 @@ void Mesh::setupMesh()
     // A great thing about structs is that their memory layout is sequential for all its items.
     // The effect is that we can simply pass a pointer to the struct and it translates perfectly to a glm::vec3/2
     // array which again translates to 3/2 floats which translates to a byte array.
-    glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(Vertex), m_vertices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(Vertex), m_vertices.data(), GL_STREAM_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_elementBufferObj);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_indices.size() * sizeof(unsigned int), m_indices.data(), GL_STATIC_DRAW);
@@ -125,5 +140,76 @@ void Mesh::setupMesh()
     // glVertexAttribPointer(
     //     6, MAX_BONE_INFLUENCE, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, m_weights));
 
+    glBindVertexArray(0);
+}
+
+void Mesh::setupCenter()
+{
+    m_center = glm::vec3(0.0f);
+    for (const auto& vertex : m_vertices)
+    {
+        m_center += vertex.m_position;
+    }
+    m_center /= (float)m_verticesCount;
+}
+
+void Mesh::rotateX(const float angle)
+{
+    rotate(glm::vec3(1.0f, 0.0f, 0.0f), angle);
+}
+
+void Mesh::rotateY(const float angle)
+{
+    rotate(glm::vec3(0.0f, 1.0f, 0.0f), angle);
+}
+
+void Mesh::rotateZ(const float angle)
+{
+    rotate(glm::vec3(0.0f, 0.0f, 1.0f), angle);
+}
+
+void Mesh::rotate(const glm::vec3 axis, const float angle)
+{
+    glm::mat4 transformMat = glm::identity<glm::mat4>();
+    transformMat = glm::translate(transformMat, m_center);
+    transformMat = glm::rotate(transformMat, glm::radians(angle), axis);
+    transformMat = glm::translate(transformMat, -m_center);
+
+    transform(transformMat);
+}
+
+void Mesh::translate(const glm::vec3 translation)
+{
+    glm::mat4 transformMat = glm::identity<glm::mat4>();
+    transformMat = glm::translate(transformMat, translation);
+    transform(transformMat);
+}
+
+void Mesh::transform(const glm::mat4 transformMat)
+{
+    m_center = glm::vec3(transformMat * glm::vec4(m_center, 1.0f));
+    std::vector<glm::vec4> newVertices(m_vertices.size());
+    // std::vector<glm::vec4> newNormals(m_vertices.size());
+    for (int i = 0; i < m_verticesCount; i++)
+    {
+        newVertices[i] = glm::vec4(m_vertices[i].m_position, 1.0f);
+        // newNormals[i] = glm::vec4(m_vertices[i].m_normal, 0.0f);
+    }
+
+    transformVec4(newVertices, transformMat);
+    // transformVec4(newNormals, transformMat);
+
+    for (int i = 0; i < m_verticesCount; i++)
+    {
+        m_vertices[i].m_position = glm::vec3(newVertices[i]);
+        // m_vertices[i].m_normal = glm::vec3(newNormals[i]);
+    }
+
+    glBindVertexArray(m_vertexArrayObj);
+    glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObj);
+
+    glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(Vertex), m_vertices.data(), GL_STREAM_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 }

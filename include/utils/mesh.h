@@ -82,6 +82,12 @@ public:
          const std::vector<Texture>& textures = std::vector<Texture>());
 
     /**
+     * @brief        Copy constructor for Mesh class
+     * @param[in]    other            Other mesh to copy
+     */
+    Mesh(const Mesh& other);
+
+    /**
      * @brief      Deconstructor for Mesh class
      */
     ~Mesh();
@@ -93,6 +99,49 @@ public:
      * @return      void
      */
     void draw(const Shader& shader, const bool haveWireframe = false) const;
+
+    /**
+     * @brief       Rotate mesh around local axis with angle degree
+     * @param[in]   axis        Rotation axis
+     * @param[in]   angle       Rotation angle(degree)
+     * @return      void
+     */
+    void rotate(const glm::vec3 axis, const float angle);
+
+    /**
+     * @brief       Rotate mesh around local x axis with angle degree
+     * @param[in]   angle       Rotation angle(degree)
+     * @return      void
+     */
+    void rotateX(const float angle = 1.0f);
+
+    /**
+     * @brief       Rotate mesh around local y axis with angle degree
+     * @param[in]   angle       Rotation angle(degree)
+     * @return      void
+     */
+    void rotateY(const float angle = 1.0f);
+
+    /**
+     * @brief       Rotate mesh around local z axis with angle degree
+     * @param[in]   angle       Rotation angle(degree)
+     * @return      void
+     */
+    void rotateZ(const float angle = 1.0f);
+
+    /**
+     * @brief       Translate mesh along with direction
+     * @param[in]   translation    Translation vec3
+     * @return      void
+     */
+    void translate(const glm::vec3 translation);
+
+    /**
+     * @brief        Transform mesh with tranform matrix
+     * @param[in]    transformMat        Transform matrix
+     * @return       void
+     */
+    void transform(const glm::mat4 transformMat);
 
 private:
     /**
@@ -106,6 +155,12 @@ private:
      * @return    void
      */
     void setupMesh();
+
+    /**
+     * @brief       Calculate center of mesh
+     * @return      void
+     */
+    void setupCenter();
 
 public:
     /**
@@ -146,4 +201,8 @@ private:
      * @brief Element buffer object id
      */
     unsigned int m_elementBufferObj;
+    /**
+     * @brief Center of mesh
+     */
+    glm::vec3 m_center;
 };

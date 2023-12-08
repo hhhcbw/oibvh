@@ -31,6 +31,12 @@ public:
     Model(const std::string& path, const bool gamma = false);
 
     /**
+     * @brief      Copy constructor for Model class
+     * @param[in]  other            Other model to copy
+     */
+    Model(const Model& other);
+
+    /**
      * @brief       Draws the model, and thus all its meshes.
      * @param[in]   shader               Shader to use
      * @param[in]   haveWireFrame        Have wire frame or not

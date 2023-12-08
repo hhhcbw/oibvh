@@ -1,4 +1,3 @@
-#include <cuda.h>
 #include <cuda_runtime.h>
 #include <fstream>
 #include <thrust/sort.h>
@@ -6,11 +5,31 @@
 
 #include "cuda/oibvhTree.cuh"
 #include "cuda/oibvh.cuh"
-#include "cuda/utils.cuh"
 
 oibvhTree::oibvhTree(const std::shared_ptr<Mesh> mesh) : m_mesh(mesh), m_convertDone(false), m_buildDone(false)
 {
     setup();
+}
+
+oibvhTree::oibvhTree(const oibvhTree& other, const std::shared_ptr<Mesh> mesh)
+    : m_mesh(mesh)
+    , m_convertDone(other.m_convertDone)
+    , m_buildDone(other.m_buildDone)
+    , m_aabbTree(other.m_aabbTree)
+    , m_faces(other.m_faces)
+    , m_positions(other.m_positions)
+    , m_vertices(other.m_vertices)
+    , m_indices(other.m_indices)
+    , m_scheduleParams(other.m_scheduleParams)
+{
+    setup();
+}
+
+oibvhTree::~oibvhTree()
+{
+    glDeleteVertexArrays(1, &m_vertexArrayObj);
+    glDeleteBuffers(1, &m_vertexBufferObj);
+    glDeleteBuffers(1, &m_elementBufferObj);
 }
 
 void oibvhTree::draw(const Shader& shader)
@@ -34,6 +53,8 @@ void oibvhTree::convertToVertexArray()
     const int numNodesInTree = m_aabbTree.size();
     const int internalNodes = numNodesInTree - primitiveCount;
     const int renderNodes = std::min(internalNodes, 256);
+    m_vertices.clear();
+    m_indices.clear();
 
     for (int i = 0; i < renderNodes; i++)
     {
@@ -69,47 +90,149 @@ void oibvhTree::convertToVertexArray()
         m_indices.insert(m_indices.end(), cubeIndices.begin(), cubeIndices.end());
     }
 
+    glBindVertexArray(m_vertexArrayObj);
+    glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObj);
+    glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(glm::vec3), m_vertices.data(), GL_STREAM_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_elementBufferObj);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_indices.size() * sizeof(unsigned int), m_indices.data(), GL_STREAM_DRAW);
+    glBindVertexArray(0);
+
+    // convert done
+    m_convertDone = true;
+}
+
+void oibvhTree::schedulingParameters(const unsigned int entryLevel,
+                                     const unsigned int realCount,
+                                     const unsigned int threadsPerGroup)
+{
+    m_scheduleParams.clear();
+
+    unsigned int l = entryLevel;
+    unsigned int r = realCount;
+    unsigned int g = std::min(threadsPerGroup, next_power_of_two(r));
+    unsigned int t = (r + g - 1) / g * g;
+
+    unsigned int rLast, gLast, tLast;
+    while (1)
+    {
+        rLast = r;
+        tLast = t;
+        gLast = g;
+        m_scheduleParams.push_back({l, rLast, tLast, gLast});
+
+        if (l >= ilog2(gLast) + 1)
+            l = l - ilog2(gLast) - 1;
+        else
+            break;
+
+        r = tLast / gLast;
+        r = (r + 1) / 2;
+        g = std::min(gLast, next_power_of_two(r));
+        t = (r + g - 1) / g * g;
+    }
+}
+
+void oibvhTree::setup()
+{
+    if (!m_buildDone)
+    {
+        std::cout << "--set up--" << std::endl;
+        for (int i = 0; i < m_mesh->m_facesCount; i++)
+        {
+            m_faces.push_back(
+                glm::uvec3(m_mesh->m_indices[i * 3], m_mesh->m_indices[i * 3 + 1], m_mesh->m_indices[i * 3 + 2]));
+        }
+        for (auto vertex : m_mesh->m_vertices)
+        {
+            m_positions.push_back(vertex.m_position);
+        }
+        std::cout << "faces count: " << m_faces.size() << std::endl;
+        std::cout << "vertices count: " << m_positions.size() << std::endl;
+    }
+
     glGenVertexArrays(1U, &m_vertexArrayObj);
     glGenBuffers(1U, &m_vertexBufferObj);
     glGenBuffers(1U, &m_elementBufferObj);
 
     glBindVertexArray(m_vertexArrayObj);
     glBindBuffer(GL_ARRAY_BUFFER, m_vertexBufferObj);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * m_vertices.size(), m_vertices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * m_vertices.size(), m_vertices.data(), GL_STREAM_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_elementBufferObj);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * m_indices.size(), m_indices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * m_indices.size(), m_indices.data(), GL_STREAM_DRAW);
 
     glEnableVertexAttribArray(0U);
     glVertexAttribPointer(0U, 3U, GL_FLOAT, GL_FALSE, 0, (void*)0); // position
 
     glBindVertexArray(0U);
-
-    // convert done
-    m_convertDone = true;
 }
 
-void oibvhTree::setup()
+void oibvhTree::refit()
 {
-    std::cout << "--set up--" << std::endl;
-    for (int i = 0; i < m_mesh->m_facesCount; i++)
+    //std::cout << "--refit--" << std::endl;
+    for (int i = 0; i < m_mesh->m_verticesCount; i++)
     {
-        m_faces.push_back(
-            glm::uvec3(m_mesh->m_indices[i * 3], m_mesh->m_indices[i * 3 + 1], m_mesh->m_indices[i * 3 + 2]));
+        m_positions[i] = m_mesh->m_vertices[i].m_position;
     }
-    for (auto vertex : m_mesh->m_vertices)
-    {
-        m_positions.push_back(vertex.m_position);
-    }
-    std::cout << "faces count: " << m_faces.size() << std::endl;
-    std::cout << "vertices count: " << m_positions.size() << std::endl;
-}
+    float elapsed_ms = 0.0f;
+    const unsigned int primitive_count = m_faces.size();
+    const unsigned int vertex_count = m_positions.size();
+    const unsigned int oibvh_size = oibvh_get_size(primitive_count);
+    const unsigned int oibvh_internal_node_count = oibvh_size - primitive_count;
+    glm::vec3* d_positions;
+    glm::uvec3* d_faces;
+    aabb_box_t* d_aabbs;
+    deviceMalloc(&d_positions, vertex_count);
+    deviceMalloc(&d_faces, primitive_count);
+    deviceMalloc(&d_aabbs, oibvh_size);
+    deviceMemcpy(d_positions, m_positions.data(), vertex_count);
+    deviceMemcpy(d_faces, m_faces.data(), primitive_count);
 
+    elapsed_ms = kernelLaunch([&]() {
+        dim3 blockSize = dim3(256);
+        int bx = (primitive_count + blockSize.x - 1) / blockSize.x;
+        dim3 gridSize = dim3(bx);
+        calculate_aabb_kernel<<<gridSize, blockSize>>>(
+            d_faces, d_positions, primitive_count, d_aabbs + oibvh_internal_node_count);
+    });
+    //std::cout << "Primitive AABBs calculation took: " << elapsed_ms << "ms" << std::endl;
+
+    //std::cout << "kerenl count: " << m_scheduleParams.size() << std::endl;
+
+    for (int k = 0; k < m_scheduleParams.size(); k++)
+    {
+        //std::cout << "kernel" << k << std::endl;
+        //std::cout << "  entry level: " << m_scheduleParams[k].m_entryLevel << std::endl;
+        //std::cout << "  real nodes: " << m_scheduleParams[k].m_realCount << std::endl;
+        //std::cout << "  total threads: " << m_scheduleParams[k].m_threads << std::endl;
+        //std::cout << "  group size: " << m_scheduleParams[k].m_threadsPerGroup << std::endl;
+        //std::cout << "  group count: " << m_scheduleParams[k].m_threads / m_scheduleParams[k].m_threadsPerGroup
+        //          << std::endl;
+        elapsed_ms = kernelLaunch([&]() {
+            dim3 blockSize = dim3(m_scheduleParams[k].m_threadsPerGroup);
+            dim3 gridSize = dim3(m_scheduleParams[k].m_threads / m_scheduleParams[k].m_threadsPerGroup);
+            oibvh_tree_construction_kernel<<<gridSize, blockSize>>>(m_scheduleParams[k].m_entryLevel,
+                                                                    m_scheduleParams[k].m_realCount,
+                                                                    primitive_count,
+                                                                    m_scheduleParams[k].m_threadsPerGroup,
+                                                                    d_aabbs);
+        });
+        //std::cout << "  oibvh contruct kernel took: " << elapsed_ms << "ms" << std::endl;
+    }
+
+    hostMemcpy(m_aabbTree.data(), d_aabbs, oibvh_size);
+    cudaFree(d_positions);
+    cudaFree(d_faces);
+    cudaFree(d_aabbs);
+
+    m_convertDone = false;
+}
 void oibvhTree::build()
 {
     std::cout << "--build oibvh tree--" << std::endl;
     int dev;
-    float elapsed_ms;
+    float elapsed_ms = 0.0f;
     cudaGetDevice(&dev);
     std::cout << "device id: " << dev << std::endl;
     const unsigned int primitive_count = m_faces.size();
@@ -187,37 +310,36 @@ void oibvhTree::build()
     const unsigned int virtualLeafCount = primitiveCountNextPower2 - primitive_count;
     unsigned int entryLevelSize = oibvh_level_real_node_count(entryLevel, tLeafLev, virtualLeafCount);
 
-    std::vector<s_param_t> scheduleParams;
-    oibvh_scheduling_parameters(entryLevel, entryLevelSize, THREADS_PER_BLOCK, scheduleParams);
+    schedulingParameters(entryLevel, entryLevelSize, THREADS_PER_BLOCK);
 
 #if 0
     // print result
-    std::cout << "scheduleParams: " << std::endl;
-    for (auto param : scheduleParams)
+    std::cout << "m_scheduleParams: " << std::endl;
+    for (auto param : m_scheduleParams)
     {
         std::cout << param.m_entryLevel << "," << param.m_realCount << "," << param.m_threadsPerGroup << ","
                   << param.m_threads << std::endl;
     }
 #endif
 
-    std::cout << "kerenl count: " << scheduleParams.size() << std::endl;
+    std::cout << "kerenl count: " << m_scheduleParams.size() << std::endl;
 
-    for (int k = 0; k < scheduleParams.size(); k++)
+    for (int k = 0; k < m_scheduleParams.size(); k++)
     {
         std::cout << "kernel" << k << std::endl;
-        std::cout << "  entry level: " << scheduleParams[k].m_entryLevel << std::endl;
-        std::cout << "  real nodes: " << scheduleParams[k].m_realCount << std::endl;
-        std::cout << "  total threads: " << scheduleParams[k].m_threads << std::endl;
-        std::cout << "  group size: " << scheduleParams[k].m_threadsPerGroup << std::endl;
-        std::cout << "  group count: " << scheduleParams[k].m_threads / scheduleParams[k].m_threadsPerGroup
+        std::cout << "  entry level: " << m_scheduleParams[k].m_entryLevel << std::endl;
+        std::cout << "  real nodes: " << m_scheduleParams[k].m_realCount << std::endl;
+        std::cout << "  total threads: " << m_scheduleParams[k].m_threads << std::endl;
+        std::cout << "  group size: " << m_scheduleParams[k].m_threadsPerGroup << std::endl;
+        std::cout << "  group count: " << m_scheduleParams[k].m_threads / m_scheduleParams[k].m_threadsPerGroup
                   << std::endl;
         elapsed_ms = kernelLaunch([&]() {
-            dim3 blockSize = dim3(scheduleParams[k].m_threadsPerGroup);
-            dim3 gridSize = dim3(scheduleParams[k].m_threads / scheduleParams[k].m_threadsPerGroup);
-            oibvh_tree_construction_kernel<<<gridSize, blockSize>>>(scheduleParams[k].m_entryLevel,
-                                                                    scheduleParams[k].m_realCount,
+            dim3 blockSize = dim3(m_scheduleParams[k].m_threadsPerGroup);
+            dim3 gridSize = dim3(m_scheduleParams[k].m_threads / m_scheduleParams[k].m_threadsPerGroup);
+            oibvh_tree_construction_kernel<<<gridSize, blockSize>>>(m_scheduleParams[k].m_entryLevel,
+                                                                    m_scheduleParams[k].m_realCount,
                                                                     primitive_count,
-                                                                    scheduleParams[k].m_threadsPerGroup,
+                                                                    m_scheduleParams[k].m_threadsPerGroup,
                                                                     d_aabbs);
         });
         std::cout << "  oibvh contruct kernel took: " << elapsed_ms << "ms" << std::endl;

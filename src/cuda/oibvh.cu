@@ -1,4 +1,3 @@
-#include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #include <device_functions.h>
 #include <thrust/extrema.h>
@@ -20,6 +19,24 @@ __device__ inline unsigned int morton3D(glm::vec3 position)
     return (strech_by_3((unsigned int)thrust::min(thrust::max(position.x * 1024.0f, 0.0f), 1023.0f)) << 2 |
             strech_by_3((unsigned int)thrust::min(thrust::max(position.y * 1024.0f, 0.0f), 1023.0f)) << 1 |
             strech_by_3((unsigned int)thrust::min(thrust::max(position.z * 1024.0f, 0.0f), 1023.0f)) << 0);
+}
+
+__global__ void
+calculate_aabb_kernel(glm::uvec3* faces, glm::vec3* positions, unsigned int face_count, aabb_box_t* aabbs)
+{
+    const int primitive_index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (primitive_index >= face_count)
+        return;
+
+    // calculate aabb
+    glm::uvec3 face = faces[primitive_index];
+    glm::vec3 v0 = positions[face.x];
+    glm::vec3 v1 = positions[face.y];
+    glm::vec3 v2 = positions[face.z];
+    glm::vec3 minimum = glm::min(glm::min(v0, v1), v2);
+    glm::vec3 maximum = glm::max(glm::max(v0, v1), v2);
+    aabbs[primitive_index].minimum = minimum;
+    aabbs[primitive_index].maximum = maximum;
 }
 
 __global__ void calculate_aabb_and_morton_kernel(glm::uvec3* faces,
@@ -150,35 +167,5 @@ __global__ void oibvh_tree_construction_kernel(unsigned int tEntryLev,
         if (tLev == 0)
             return;
         tLev--;
-    }
-}
-
-__host__ void oibvh_scheduling_parameters(const unsigned int entryLevel,
-                                          const unsigned int realCount,
-                                          const unsigned int threadsPerGroup,
-                                          std::vector<s_param_t>& scheduleParams)
-{
-    unsigned int l = entryLevel;
-    unsigned int r = realCount;
-    unsigned int g = std::min(threadsPerGroup, next_power_of_two(r));
-    unsigned int t = (r + g - 1) / g * g;
-
-    unsigned int rLast, gLast, tLast;
-    while (1)
-    {
-        rLast = r;
-        tLast = t;
-        gLast = g;
-        scheduleParams.push_back({l, rLast, tLast, gLast});
-
-        if (l >= ilog2(gLast) + 1)
-            l = l - ilog2(gLast) - 1;
-        else
-            break;
-
-        r = tLast / gLast;
-        r = (r + 1) / 2;
-        g = std::min(gLast, next_power_of_two(r));
-        t = (r + g - 1) / g * g;
     }
 }
