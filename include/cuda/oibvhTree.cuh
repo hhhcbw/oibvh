@@ -38,28 +38,28 @@ typedef struct scheduling_param
     }
 } s_param_t;
 
-class oibvhTree
+class OibvhTree
 {
 public:
-    oibvhTree() = delete;
+    OibvhTree() = delete;
 
     /**
      * @brief      Constructor for oibvhTree class
      * @param[in]  mesh        Mesh to build oibvh tree
      */
-    oibvhTree(const std::shared_ptr<Mesh> mesh);
+    OibvhTree(const std::shared_ptr<Mesh> mesh);
 
     /**
      * @brief      Copy constructor for oibvhTree class
      * @param[in]  other            Other oibvhTree to copy
      * @param[in]  mesh             Mesh to build oibvh tree
      */
-    oibvhTree(const oibvhTree& other, const std::shared_ptr<Mesh> mesh);
+    OibvhTree(const std::shared_ptr<OibvhTree> other, const std::shared_ptr<Mesh> mesh);
 
     /**
      * @brief      Destructor for oibvhTree class
      */
-    ~oibvhTree();
+    ~OibvhTree();
 
     /**
      * @brief   Build oibvh tree through gpu
@@ -79,6 +79,18 @@ public:
      * @return        void
      */
     void draw(const Shader& shader);
+
+    /**
+     * @brief        Get depth of oibvh tree
+     * @return       Depth of oibvh tree
+     */
+    unsigned int getDepth() const;
+
+    /**
+     * @brief        Get primitive count in oibvh tree
+     * @return       Primitive count in oibvh tree
+     */
+    unsigned int getPrimCount() const;
 
 private:
     /**
@@ -153,4 +165,6 @@ private:
      * @brief Parameters of scheduling kernel
      */
     std::vector<s_param_t> m_scheduleParams;
+
+    friend class Scene;
 };

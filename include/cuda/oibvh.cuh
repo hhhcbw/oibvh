@@ -49,7 +49,7 @@ __global__ void oibvh_tree_construction_kernel(unsigned int tEntryLev,
  */
 __device__ __host__ inline unsigned int oibvh_get_size(const unsigned int t)
 {
-    return 2 * t - 1 + cuda::std::popcount(next_power_of_two(t) - t);
+    return 2 * t + cuda::std::popcount(next_power_of_two(t) - t) - 1;
 }
 
 /**
@@ -60,7 +60,7 @@ __device__ __host__ inline unsigned int oibvh_get_size(const unsigned int t)
  * @return      Count of virtual nodes at giving level of oibvh tree
  */
 __device__ __host__ inline unsigned int
-oibvh_calc_level_virtual_node_count(const unsigned int li, const unsigned int lli, const unsigned int vl)
+oibvh_level_virtual_node_count(const unsigned int li, const unsigned int lli, const unsigned int vl)
 {
     return vl >> (lli - li);
 }
@@ -75,5 +75,84 @@ oibvh_calc_level_virtual_node_count(const unsigned int li, const unsigned int ll
 __device__ __host__ inline unsigned int
 oibvh_level_real_node_count(const unsigned int li, const unsigned int lli, const unsigned int vl)
 {
-    return (1 << li) - oibvh_calc_level_virtual_node_count(li, lli, vl);
+    return (1 << li) - oibvh_level_virtual_node_count(li, lli, vl);
+}
+
+/**
+ * @brief       Calculate count of all virtual nodes at giving level of oibvh tree
+ * @param[in]   li        Giving level of oibvh tree
+ * @param[in]   lli       Level of leaf on tree
+ * @param[in]   vl        Count of virtual leaf
+ * @return      Count of all real nodes at giving level of oibvh tree
+ */
+__device__ __host__ inline unsigned int
+oibvh_level_all_virtual_node_count(const unsigned int li, const unsigned int lli, const unsigned int vl)
+{
+    const unsigned int levelVirtualNodeCount = oibvh_level_virtual_node_count(li, lli, vl);
+    return (levelVirtualNodeCount << 1) - cuda::std::popcount(levelVirtualNodeCount);
+}
+
+/**
+ * @brief        Map implicit index to real index
+ * @param[in]    implicitIdx           Implicit  Index
+ * @param[in]    leafLev               Level of leaf
+ * @param[in]    primCount             Count of primitive
+ * @return       Real index mapped from implicit index
+ */
+__device__ __host__ inline unsigned int
+oibvh_implicit_to_real(const unsigned int implicitIdx, const unsigned int leafLev, const unsigned int primCount)
+{
+    const unsigned int level = ilog2(implicitIdx + 1);
+    const unsigned int vl = (1 << leafLev) - primCount;
+    return implicitIdx - oibvh_level_all_virtual_node_count(level - 1, leafLev, vl);
+}
+
+/**
+ * @brief      Map real index to implicit index
+ * @param[in]  realIdx            Real index
+ * @param[in]  leafLev            Level of leaf
+ * @param[in]  primCount          Count of primitive
+ * @return     Implicit index mapped from real index
+ */
+__device__ __host__ inline unsigned int
+oibvh_real_to_implicit(const unsigned int realIdx, const unsigned int leafLev, const unsigned int primCount)
+{
+    const unsigned int level = ilog2(next_power_of_two(realIdx)) - 1;
+    const unsigned int vl = (1 << leafLev) - primCount;
+    const unsigned int levelAllVirtualCount = oibvh_level_all_virtual_node_count(level, leafLev, vl);
+    const unsigned int levelAllRealCount = (1 << (level + 1)) - 2 - levelAllVirtualCount;
+    if (levelAllRealCount < realIdx)
+    {
+        return realIdx + levelAllVirtualCount;
+    }
+    return realIdx + levelAllVirtualCount - oibvh_level_virtual_node_count(level, leafLev, vl);
+}
+
+/**
+ * @brief       Whether current in oibvh tree have right child
+ * @param[in]   implicitIdx        Implicit index of current node
+ * @param[in]   leafLev            level of leaf
+ * @param[in]   primCount          Count of primitives
+ * @return      True is have right child, otherwise false
+ */
+__device__ __host__ inline bool
+oibvh_have_rchild(const unsigned int implicitIdx, const unsigned int leafLev, const unsigned int primCount)
+{
+    const unsigned int nextLevel = ilog2(implicitIdx + 1) + 1;
+#if 0
+    printf("%u %u %u %u %u\n",
+           nextLevel,
+           leafLev,
+           primCount,
+           2 * implicitIdx + 4 - (1 << nextLevel),
+           oibvh_level_real_node_count(nextLevel, leafLev, primCount));
+#endif
+    if (2 * implicitIdx + 4 <= (1 << nextLevel) + oibvh_level_real_node_count(nextLevel, leafLev, primCount))
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
 }

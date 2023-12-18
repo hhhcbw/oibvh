@@ -27,6 +27,12 @@ inline void hostMemcpy(T* dst, T* src, size_t size)
     cudaMemcpy(dst, src, size * sizeof(T), cudaMemcpyDeviceToHost);
 }
 
+template <typename T>
+inline void deviceMemset(T* ptr, int value, size_t size)
+{
+    cudaMemset(ptr, value, size * sizeof(T));
+}
+
 inline float kernelLaunch(std::function<void()> func, bool measure_time = true)
 {
     float ms = 0.0f;
@@ -52,6 +58,11 @@ inline float kernelLaunch(std::function<void()> func, bool measure_time = true)
     return ms;
 }
 
+/**
+ * @brief        Next power of two of x
+ * @param[in]    x    The value to round up
+ * @return       The next power of two
+ */
 __device__ __host__ inline unsigned int next_power_of_two(unsigned int x)
 {
     x--;
@@ -64,6 +75,11 @@ __device__ __host__ inline unsigned int next_power_of_two(unsigned int x)
     return x;
 }
 
+/**
+ * @brief        Round down log2(x)
+ * @param[in]    x    The value to take the log2 of
+ * @return       The floor of log2(x)
+ */
 __device__ __host__ inline unsigned int ilog2(unsigned int x)
 {
     return sizeof(unsigned int) * CHAR_BIT - cuda::std::__countl_zero(x) - 1;

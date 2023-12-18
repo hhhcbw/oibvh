@@ -147,7 +147,7 @@ __global__ void oibvh_tree_construction_kernel(unsigned int tEntryLev,
         tChildMostLeftRealIdx = tMostLeftRealIdx;
         tChildMostRightRealIdx = tMostRightRealIdx;
         tRealCount = (tRealCount + 1) >> 1;
-        tMostRightRealIdx = oibvh_get_size(tRealCount) - 1;
+        tMostRightRealIdx = tChildMostLeftRealIdx-1;
         tMostLeftRealIdx = tMostRightRealIdx - tRealCount + 1;
 
         tChildLeftRealIdx = tChildMostLeftRealIdx + tLevPos * 2;

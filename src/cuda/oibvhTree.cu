@@ -6,33 +6,43 @@
 #include "cuda/oibvhTree.cuh"
 #include "cuda/oibvh.cuh"
 
-oibvhTree::oibvhTree(const std::shared_ptr<Mesh> mesh) : m_mesh(mesh), m_convertDone(false), m_buildDone(false)
+OibvhTree::OibvhTree(const std::shared_ptr<Mesh> mesh) : m_mesh(mesh), m_convertDone(false), m_buildDone(false)
 {
     setup();
 }
 
-oibvhTree::oibvhTree(const oibvhTree& other, const std::shared_ptr<Mesh> mesh)
+OibvhTree::OibvhTree(const std::shared_ptr<OibvhTree> other, const std::shared_ptr<Mesh> mesh)
     : m_mesh(mesh)
-    , m_convertDone(other.m_convertDone)
-    , m_buildDone(other.m_buildDone)
-    , m_aabbTree(other.m_aabbTree)
-    , m_faces(other.m_faces)
-    , m_positions(other.m_positions)
-    , m_vertices(other.m_vertices)
-    , m_indices(other.m_indices)
-    , m_scheduleParams(other.m_scheduleParams)
+    , m_convertDone(other->m_convertDone)
+    , m_buildDone(other->m_buildDone)
+    , m_aabbTree(other->m_aabbTree)
+    , m_faces(other->m_faces)
+    , m_positions(other->m_positions)
+    , m_vertices(other->m_vertices)
+    , m_indices(other->m_indices)
+    , m_scheduleParams(other->m_scheduleParams)
 {
     setup();
 }
 
-oibvhTree::~oibvhTree()
+OibvhTree::~OibvhTree()
 {
     glDeleteVertexArrays(1, &m_vertexArrayObj);
     glDeleteBuffers(1, &m_vertexBufferObj);
     glDeleteBuffers(1, &m_elementBufferObj);
 }
 
-void oibvhTree::draw(const Shader& shader)
+unsigned int OibvhTree::getDepth() const
+{
+    return ilog2(m_aabbTree.size());
+}
+
+unsigned int OibvhTree::getPrimCount() const
+{
+    return m_faces.size();
+}
+
+void OibvhTree::draw(const Shader& shader)
 {
 
     if (!m_convertDone)
@@ -45,7 +55,7 @@ void oibvhTree::draw(const Shader& shader)
     glBindVertexArray(0U);
 }
 
-void oibvhTree::convertToVertexArray()
+void OibvhTree::convertToVertexArray()
 {
     assert(m_buildDone);
 
@@ -102,7 +112,7 @@ void oibvhTree::convertToVertexArray()
     m_convertDone = true;
 }
 
-void oibvhTree::schedulingParameters(const unsigned int entryLevel,
+void OibvhTree::schedulingParameters(const unsigned int entryLevel,
                                      const unsigned int realCount,
                                      const unsigned int threadsPerGroup)
 {
@@ -133,7 +143,7 @@ void oibvhTree::schedulingParameters(const unsigned int entryLevel,
     }
 }
 
-void oibvhTree::setup()
+void OibvhTree::setup()
 {
     if (!m_buildDone)
     {
@@ -168,9 +178,9 @@ void oibvhTree::setup()
     glBindVertexArray(0U);
 }
 
-void oibvhTree::refit()
+void OibvhTree::refit()
 {
-    //std::cout << "--refit--" << std::endl;
+    // std::cout << "--refit--" << std::endl;
     for (int i = 0; i < m_mesh->m_verticesCount; i++)
     {
         m_positions[i] = m_mesh->m_vertices[i].m_position;
@@ -196,19 +206,19 @@ void oibvhTree::refit()
         calculate_aabb_kernel<<<gridSize, blockSize>>>(
             d_faces, d_positions, primitive_count, d_aabbs + oibvh_internal_node_count);
     });
-    //std::cout << "Primitive AABBs calculation took: " << elapsed_ms << "ms" << std::endl;
+    // std::cout << "Primitive AABBs calculation took: " << elapsed_ms << "ms" << std::endl;
 
-    //std::cout << "kerenl count: " << m_scheduleParams.size() << std::endl;
+    // std::cout << "kerenl count: " << m_scheduleParams.size() << std::endl;
 
     for (int k = 0; k < m_scheduleParams.size(); k++)
     {
-        //std::cout << "kernel" << k << std::endl;
-        //std::cout << "  entry level: " << m_scheduleParams[k].m_entryLevel << std::endl;
-        //std::cout << "  real nodes: " << m_scheduleParams[k].m_realCount << std::endl;
-        //std::cout << "  total threads: " << m_scheduleParams[k].m_threads << std::endl;
-        //std::cout << "  group size: " << m_scheduleParams[k].m_threadsPerGroup << std::endl;
-        //std::cout << "  group count: " << m_scheduleParams[k].m_threads / m_scheduleParams[k].m_threadsPerGroup
-        //          << std::endl;
+        // std::cout << "kernel" << k << std::endl;
+        // std::cout << "  entry level: " << m_scheduleParams[k].m_entryLevel << std::endl;
+        // std::cout << "  real nodes: " << m_scheduleParams[k].m_realCount << std::endl;
+        // std::cout << "  total threads: " << m_scheduleParams[k].m_threads << std::endl;
+        // std::cout << "  group size: " << m_scheduleParams[k].m_threadsPerGroup << std::endl;
+        // std::cout << "  group count: " << m_scheduleParams[k].m_threads / m_scheduleParams[k].m_threadsPerGroup
+        //           << std::endl;
         elapsed_ms = kernelLaunch([&]() {
             dim3 blockSize = dim3(m_scheduleParams[k].m_threadsPerGroup);
             dim3 gridSize = dim3(m_scheduleParams[k].m_threads / m_scheduleParams[k].m_threadsPerGroup);
@@ -218,7 +228,7 @@ void oibvhTree::refit()
                                                                     m_scheduleParams[k].m_threadsPerGroup,
                                                                     d_aabbs);
         });
-        //std::cout << "  oibvh contruct kernel took: " << elapsed_ms << "ms" << std::endl;
+        // std::cout << "  oibvh contruct kernel took: " << elapsed_ms << "ms" << std::endl;
     }
 
     hostMemcpy(m_aabbTree.data(), d_aabbs, oibvh_size);
@@ -228,7 +238,8 @@ void oibvhTree::refit()
 
     m_convertDone = false;
 }
-void oibvhTree::build()
+
+void OibvhTree::build()
 {
     std::cout << "--build oibvh tree--" << std::endl;
     int dev;
@@ -277,15 +288,20 @@ void oibvhTree::build()
      aabb == m_mesh->m_aabb ? std::cout << "aabb is correct" << std::endl : std::cout << "aabb is wrong" << std::endl;
      delete[] temp_aabbs;
 #endif
-
+    unsigned int* d_mortons_copy;
+    deviceMalloc(&d_mortons_copy, primitive_count);
+    cudaMemcpy(d_mortons_copy, d_mortons, primitive_count * sizeof(unsigned int), cudaMemcpyDeviceToDevice);
+    thrust::device_ptr<unsigned int> d_mortons_copy_ptr(d_mortons_copy);
     thrust::device_ptr<unsigned int> d_mortons_ptr(d_mortons);
     thrust::device_ptr<glm::uvec3> d_faces_ptr(d_faces);
-    thrust::device_ptr<aabb_box_t> d_aabbs_ptr(d_aabbs + oibvh_internal_node_count);
+    thrust::device_ptr<aabb_box_t> d_aabbs_leaf_ptr(d_aabbs + oibvh_internal_node_count);
     elapsed_ms = kernelLaunch([&]() {
         thrust::stable_sort_by_key(d_mortons_ptr, d_mortons_ptr + primitive_count, d_faces_ptr);
-        thrust::stable_sort_by_key(d_mortons_ptr, d_mortons_ptr + primitive_count, d_aabbs_ptr);
+        thrust::stable_sort_by_key(d_mortons_copy_ptr, d_mortons_copy_ptr + primitive_count, d_aabbs_leaf_ptr);
     });
     std::cout << "Sorting took: " << elapsed_ms << "ms" << std::endl;
+    cudaFree(d_mortons);
+    cudaFree(d_mortons_copy);
 
 #if 0
     // print result
@@ -352,11 +368,11 @@ void oibvhTree::build()
     hostMemcpy(temp_aabbs, d_aabbs, oibvh_size);
     std::ofstream outfile;
     outfile.open("C://Code//oibvh//logs//bvh_log.txt");
-    for (int i = 0; i < oibvh_size; i++)
+    for (int i = 0; i < oibvh_internal_node_count; i++)
     {
         outfile << temp_aabbs[i].minimum << "," << temp_aabbs[i].maximum << std::endl;
     }
-    //std::cout << m_mesh->m_aabb.minimum << "," << m_mesh->m_aabb.maximum << std::endl;
+    // std::cout << m_mesh->m_aabb.minimum << "," << m_mesh->m_aabb.maximum << std::endl;
 #endif
 
     // copy result to host
@@ -368,7 +384,6 @@ void oibvhTree::build()
     cudaFree(d_positions);
     cudaFree(d_faces);
     cudaFree(d_aabbs);
-    cudaFree(d_mortons);
 
     // build done
     m_buildDone = true;

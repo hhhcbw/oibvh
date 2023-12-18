@@ -10,6 +10,7 @@
 #include <glad/glad.h>
 #include <stb_image.h>
 #include <iostream>
+#include <utility>
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
@@ -20,6 +21,7 @@
 #include "utils/model.h"
 #include "utils/camera.h"
 #include "cuda/oibvhTree.cuh"
+#include "cuda/scene.cuh"
 
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
@@ -93,6 +95,8 @@ int main(int, char**)
     bool draw_bunny2 = false;
     bool draw_box2 = false;
     bool rotate_bunny2 = false;
+    bool detect_collision = false;
+    bool draw_collision = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
     // glad: load all OpenGL function pointers
@@ -102,6 +106,10 @@ int main(int, char**)
         std::cout << "Failed to initialize GLAD" << std::endl;
         return -1;
     }
+
+    const char vertexIntTriPath[] = "C://Code//oibvh//shaders//temp_vertex_shader.glsl";
+    const char fragmentIntTriPath[] = "C://Code//oibvh//shaders//temp_fragment_shader.glsl";
+    Shader shaderIntTri(vertexIntTriPath, fragmentIntTriPath);
 
     const char vertexMeshPath[] = "C://Code//oibvh//shaders//mesh_vertex_shader.glsl";
     const char fragmentMeshPath[] = "C://Code//oibvh//shaders//mesh_fragment_shader.glsl";
@@ -115,15 +123,18 @@ int main(int, char**)
     stbi_set_flip_vertically_on_load(true);
     Model bunny1("C://Code//oibvh//objects//bunny.obj");
     // Model model("C://Code//oibvh//objects//dragon.obj");
-    oibvhTree treeBunny1(bunny1.m_meshes[0]);
+    std::shared_ptr<OibvhTree> treeBunny1 = std::make_shared<OibvhTree>(bunny1.m_meshes[0]);
     // oibvhTree tree(meshSPtr);
-    treeBunny1.build();
+    treeBunny1->build();
     Model bunny2(bunny1);
-    oibvhTree treeBunny2(treeBunny1, bunny2.m_meshes[0]);
+    std::shared_ptr<OibvhTree> treeBunny2 = std::make_shared<OibvhTree>(treeBunny1, bunny2.m_meshes[0]);
     bunny2.m_meshes[0]->translate(glm::vec3(1.0f, 0.0f, 0.0f));
-    treeBunny2.refit();
+    treeBunny2->refit();
+    Scene scene;
+    scene.addObject(std::make_pair(bunny1.m_meshes[0], treeBunny1));
+    scene.addObject(std::make_pair(bunny2.m_meshes[0], treeBunny2));
     glEnable(GL_DEPTH_TEST);
-
+    glDepthFunc(GL_LEQUAL);
     // Main loop
     while (!glfwWindowShouldClose(window))
     {
@@ -157,6 +168,9 @@ int main(int, char**)
             ImGui::Checkbox("Draw box2", &draw_box2);
             ImGui::SameLine();
             ImGui::Checkbox("Rotate bunny2", &rotate_bunny2);
+            ImGui::Checkbox("Detect collision", &detect_collision);
+            ImGui::SameLine();
+            ImGui::Checkbox("Draw collision", &draw_collision);
             ImGui::Checkbox("Free view", &free_view);
 
             ImGui::Text("Application average %.3f ms/frame (%.1f FPS)",
@@ -178,7 +192,7 @@ int main(int, char**)
             if (rotate_bunny1)
             {
                 bunny1.m_meshes[0]->rotateZ();
-                treeBunny1.refit();
+                treeBunny1->refit();
             }
 
             shaderMesh.activate();
@@ -202,7 +216,7 @@ int main(int, char**)
                 shaderBVH.activate();
                 glm::mat4 modelViewProjection = projection * view * modelMat;
                 shaderBVH.setMat4("modelViewProjection", modelViewProjection);
-                treeBunny1.draw(shaderBVH);
+                treeBunny1->draw(shaderBVH);
 
                 shaderBVH.deactivate();
                 glEnable(GL_DEPTH_TEST);
@@ -214,7 +228,7 @@ int main(int, char**)
             if (rotate_bunny2)
             {
                 bunny2.m_meshes[0]->rotateX();
-                treeBunny2.refit();
+                treeBunny2->refit();
             }
 
             shaderMesh.activate();
@@ -238,10 +252,32 @@ int main(int, char**)
                 shaderBVH.activate();
                 glm::mat4 modelViewProjection = projection * view * modelMat;
                 shaderBVH.setMat4("modelViewProjection", modelViewProjection);
-                treeBunny2.draw(shaderBVH);
+                treeBunny2->draw(shaderBVH);
 
                 shaderBVH.deactivate();
                 glEnable(GL_DEPTH_TEST);
+            }
+        }
+
+        if (detect_collision)
+        {
+            scene.detectCollision();
+
+            if (draw_collision)
+            {
+                shaderIntTri.activate();
+                // view/projection transformations
+                glm::mat4 projection =
+                    glm::perspective(glm::radians(camera.getZoom()), (float)display_w / (float)display_h, 0.1f, 100.0f);
+                glm::mat4 view = camera.getViewMatrix();
+                shaderIntTri.setMat4("view", view);
+                shaderIntTri.setMat4("projection", projection);
+                glm::mat4 modelMat = glm::mat4(1.0f);
+                shaderIntTri.setMat4("model", modelMat);
+
+                scene.draw();
+
+                shaderIntTri.deactivate();
             }
         }
 
