@@ -6,19 +6,19 @@
 #include "cuda/oibvh.cuh"
 #include "cuda/utils.cuh"
 
-__device__ inline bool overlap(aabb_box_t a, aabb_box_t b)
+__device__ inline bool overlap(const aabb_box_t& aabb1, const aabb_box_t& aabb2)
 {
-    return (a.minimum.x <= b.maximum.x && a.maximum.x >= b.minimum.x) &&
-        (a.minimum.y <= b.maximum.y && a.maximum.y >= b.minimum.y) &&
-        (a.minimum.z <= b.maximum.z && a.maximum.z >= b.minimum.z);
+    return (aabb1.m_minimum.x <= aabb2.m_maximum.x && aabb1.m_maximum.x >= aabb2.m_minimum.x) &&
+        (aabb1.m_minimum.y <= aabb2.m_maximum.y && aabb1.m_maximum.y >= aabb2.m_minimum.y) &&
+        (aabb1.m_minimum.z <= aabb2.m_maximum.z && aabb1.m_maximum.z >= aabb2.m_minimum.z);
 }
 
-__device__ inline void read_information(unsigned int* sharedBvhOffsets,
+__device__ inline void read_information(unsigned int* sharedAabbOffsets,
                                         unsigned int* sharedPrimOffsets,
                                         unsigned int* sharedPrimCount,
-                                        unsigned int bvhIndex,
+                                        unsigned int aabbIndex,
                                         unsigned int layoutLength,
-                                        unsigned int& bvhOffset,
+                                        unsigned int& aabbOffset,
                                         unsigned int& primOffset,
                                         unsigned int& primitiveCount)
 {
@@ -29,7 +29,7 @@ __device__ inline void read_information(unsigned int* sharedBvhOffsets,
     while (l <= r)
     {
         m = (l + r) / 2;
-        if (sharedBvhOffsets[m] <= bvhIndex)
+        if (sharedAabbOffsets[m] <= aabbIndex)
         {
             l = m + 1;
             idxLayout = m;
@@ -37,13 +37,13 @@ __device__ inline void read_information(unsigned int* sharedBvhOffsets,
         else
             r = m - 1;
     }
-    bvhOffset = sharedBvhOffsets[idxLayout];
+    aabbOffset = sharedAabbOffsets[idxLayout];
     primOffset = sharedPrimOffsets[idxLayout];
     primitiveCount = sharedPrimCount[idxLayout];
 #if 0
     printf("\n");
     printf("idxLayout: %d\n", idxLayout);
-    printf("bvhOffset: %u\n", bvhOffset);
+    printf("aabbOffset: %u\n", aabbOffset);
     printf("primOffset: %u\n", primOffset);
     printf("primitiveCount: %u\n", primitiveCount);
 #endif
@@ -53,7 +53,7 @@ __device__ inline void read_information(unsigned int* sharedPrimOffsets,
                                         unsigned int* sharedVertexOffsets,
                                         unsigned int primIndex,
                                         unsigned int layoutLength,
-                                        unsigned int& meshIndex,
+                                        unsigned int& bvhIndex,
                                         unsigned int& primOffset,
                                         unsigned int& vertexOffset)
 {
@@ -72,7 +72,7 @@ __device__ inline void read_information(unsigned int* sharedPrimOffsets,
         else
             r = m - 1;
     }
-    meshIndex = idxLayout;
+    bvhIndex = idxLayout;
     primOffset = sharedPrimOffsets[idxLayout];
     vertexOffset = sharedVertexOffsets[idxLayout];
 }
@@ -81,7 +81,7 @@ __global__ void traversal_kernel(bvtt_node_t* src,
                                  bvtt_node_t* dst,
                                  aabb_box_t* aabbs,
                                  tri_pair_node_t* triPairs,
-                                 unsigned int* bvhOffsets,
+                                 unsigned int* aabbOffsets,
                                  unsigned int* primOffsets,
                                  unsigned int* primCounts,
                                  unsigned int* nextBvttSize,
@@ -91,19 +91,19 @@ __global__ void traversal_kernel(bvtt_node_t* src,
 {
     unsigned int globalIndex = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int localIndex = threadIdx.x;
-    __shared__ unsigned int sharedBvhOffsets[256];
+    __shared__ unsigned int sharedAabbOffsets[256];
     __shared__ unsigned int sharedPrimOffsets[256];
     __shared__ unsigned int sharedPrimCounts[256];
     if (localIndex < layoutLength)
     {
 
-        sharedBvhOffsets[localIndex] = bvhOffsets[localIndex];
+        sharedAabbOffsets[localIndex] = aabbOffsets[localIndex];
         sharedPrimOffsets[localIndex] = primOffsets[localIndex];
         sharedPrimCounts[localIndex] = primCounts[localIndex];
 #if 0
         printf("\n");
         printf("localIndex: %d\n", localIndex);
-        printf("bvhOffset: %u\n", bvhOffsets[localIndex]);
+        printf("bvhOffset: %u\n", aabbOffsets[localIndex]);
         printf("primOffset: %u\n", primOffsets[localIndex]);
         printf("primitiveCount: %u\n", primCounts[localIndex]);
 #endif
@@ -113,47 +113,49 @@ __global__ void traversal_kernel(bvtt_node_t* src,
         return;
 
     bvtt_node_t node = src[globalIndex];
-    const unsigned int bvhIndexA = node.m_bvhIndex[0];
-    const unsigned int bvhIndexB = node.m_bvhIndex[1];
-    aabb_box_t bvhA = aabbs[bvhIndexA];
-    aabb_box_t bvhB = aabbs[bvhIndexB];
-    if (!overlap(bvhA, bvhB)) // AABB overlap fail
+    const unsigned int aabbIndexA = node.m_aabbIndex[0];
+    const unsigned int aabbIndexB = node.m_aabbIndex[1];
+    aabb_box_t aabbA = aabbs[aabbIndexA];
+    aabb_box_t aabbB = aabbs[aabbIndexB];
+    if (!overlap(aabbA, aabbB)) // AABB overlap fail
     {
         return;
     }
 
-    unsigned int bvhOffsetA, primOffsetA, primitiveCountA; // A oibvh tree
-    unsigned int bvhOffsetB, primOffsetB, primitiveCountB; // B oibvh tree
-    read_information(sharedBvhOffsets,
+    unsigned int aabbOffsetA, primOffsetA, primitiveCountA; // A oibvh tree
+    unsigned int aabbOffsetB, primOffsetB, primitiveCountB; // B oibvh tree
+    read_information(sharedAabbOffsets,
                      sharedPrimOffsets,
                      sharedPrimCounts,
-                     bvhIndexA,
+                     aabbIndexA,
                      layoutLength,
-                     bvhOffsetA,
+                     aabbOffsetA,
                      primOffsetA,
                      primitiveCountA);
-    read_information(sharedBvhOffsets,
+    read_information(sharedAabbOffsets,
                      sharedPrimOffsets,
                      sharedPrimCounts,
-                     bvhIndexB,
+                     aabbIndexB,
                      layoutLength,
-                     bvhOffsetB,
+                     aabbOffsetB,
                      primOffsetB,
                      primitiveCountB);
     const unsigned int primCountNextPower2A = next_power_of_two(primitiveCountA);
     const unsigned int primCountNextPower2B = next_power_of_two(primitiveCountB);
+    const unsigned int virtualCountA = primCountNextPower2A - primitiveCountA;
+    const unsigned int virtualCountB = primCountNextPower2B - primitiveCountB;
     const unsigned int leafLevA = ilog2(primCountNextPower2A);
     const unsigned int leafLevB = ilog2(primCountNextPower2B);
-    const unsigned int realIndexA = bvhIndexA - bvhOffsetA;
-    const unsigned int realIndexB = bvhIndexB - bvhOffsetB;
-    const unsigned int implicitIndexA = oibvh_real_to_implicit(realIndexA, leafLevA, primitiveCountA);
-    const unsigned int implicitIndexB = oibvh_real_to_implicit(realIndexB, leafLevB, primitiveCountB);
+    const unsigned int realIndexA = aabbIndexA - aabbOffsetA;
+    const unsigned int realIndexB = aabbIndexB - aabbOffsetB;
+    const unsigned int implicitIndexA = oibvh_real_to_implicit(realIndexA, leafLevA, virtualCountA);
+    const unsigned int implicitIndexB = oibvh_real_to_implicit(realIndexB, leafLevB, virtualCountB);
 #if 0
-    if (realIndexA != oibvh_implicit_to_real(implicitIndexA, leafLevA, primitiveCountA))
+    if (realIndexA != oibvh_implicit_to_real(implicitIndexA, leafLevA, virtualCountA))
     {
         printf("implicitIndexA can't map back to realIndexA\n");
     }
-    if (realIndexB != oibvh_implicit_to_real(implicitIndexB, leafLevB, primitiveCountB))
+    if (realIndexB != oibvh_implicit_to_real(implicitIndexB, leafLevB, virtualCountB))
     {
         printf("implicitIndexB can't map back to realIndexB\n");
     }
@@ -162,8 +164,8 @@ __global__ void traversal_kernel(bvtt_node_t* src,
     const unsigned int levelB = ilog2(implicitIndexB + 1);
 #if 0
     if (levelA >= 1 && levelB >= 1 &&
-        !overlap(aabbs[bvhOffsetA + oibvh_implicit_to_real((implicitIndexA - 1) / 2, leafLevA, primitiveCountA)],
-                 aabbs[bvhOffsetB + oibvh_implicit_to_real((implicitIndexB - 1) / 2, leafLevB, primitiveCountB)]))
+        !overlap(aabbs[aabbOffsetA + oibvh_implicit_to_real((implicitIndexA - 1) / 2, leafLevA, virtualCountA)],
+                 aabbs[aabbOffsetB + oibvh_implicit_to_real((implicitIndexB - 1) / 2, leafLevB, virtualCountB)]))
     {
         printf("parent don't overlap!\n");
     }
@@ -171,7 +173,7 @@ __global__ void traversal_kernel(bvtt_node_t* src,
 #if 0
     printf("\n");
     printf("global index: %u\n", globalIndex);
-    printf("bvhOffsetA: %u\n", bvhOffsetA);
+    printf("aabbOffsetA: %u\n", aabbOffsetA);
     printf("primOffsetA: %u\n", primOffsetA);
     printf("primitiveCountA: %u\n", primitiveCountA);
     printf("primCountNextPower2A: %u\n", primCountNextPower2A);
@@ -179,7 +181,7 @@ __global__ void traversal_kernel(bvtt_node_t* src,
     printf("leafLevA: %u\n", leafLevA);
     printf("realIndexA: %u\n", realIndexA);
     printf("implicitIndexA: %u\n", implicitIndexA);
-    printf("bvhOffsetB: %u\n", bvhOffsetB);
+    printf("aabbOffsetB: %u\n", aabbOffsetB);
     printf("primOffsetB: %u\n", primOffsetB);
     printf("primitiveCountB: %u\n", primitiveCountB);
     printf("primCountNextPower2B: %u\n", primCountNextPower2B);
@@ -220,36 +222,35 @@ __global__ void traversal_kernel(bvtt_node_t* src,
     if (levelA != leafLevA)
     {
         // left child
-        bvttNodeA[bvttCountA++] =
-            oibvh_implicit_to_real(implicitIndexA * 2 + 1, leafLevA, primitiveCountA) + bvhOffsetA;
-        if (oibvh_have_rchild(implicitIndexA, leafLevA, primitiveCountA))
+        bvttNodeA[bvttCountA++] = oibvh_implicit_to_real(implicitIndexA * 2 + 1, leafLevA, virtualCountA) + aabbOffsetA;
+        if (oibvh_have_rchild(implicitIndexA, leafLevA, virtualCountA))
         {
             // right child
             bvttNodeA[bvttCountA++] =
-                oibvh_implicit_to_real(implicitIndexA * 2 + 2, leafLevA, primitiveCountA) + bvhOffsetA;
+                oibvh_implicit_to_real(implicitIndexA * 2 + 2, leafLevA, virtualCountA) + aabbOffsetA;
         }
     }
     else
     {
         // current node
-        bvttNodeA[bvttCountA++] = bvhIndexA;
+        bvttNodeA[bvttCountA++] = aabbIndexA;
     }
     if (levelB != leafLevB)
     {
         // left child
         bvttNodeB[bvttCountB++] =
-            oibvh_implicit_to_real(implicitIndexB * 2 + 1, leafLevB, primitiveCountB) + bvhOffsetB;
-        if (oibvh_have_rchild(implicitIndexB, leafLevB, primitiveCountB))
+            oibvh_implicit_to_real(implicitIndexB * 2 + 1, leafLevB, virtualCountB) + aabbOffsetB;
+        if (oibvh_have_rchild(implicitIndexB, leafLevB, virtualCountB))
         {
             // right child
             bvttNodeB[bvttCountB++] =
-                oibvh_implicit_to_real(implicitIndexB * 2 + 2, leafLevB, primitiveCountB) + bvhOffsetB;
+                oibvh_implicit_to_real(implicitIndexB * 2 + 2, leafLevB, virtualCountB) + aabbOffsetB;
         }
     }
     else
     {
         // current node
-        bvttNodeB[bvttCountB++] = bvhIndexB;
+        bvttNodeB[bvttCountB++] = aabbIndexB;
     }
 
     const unsigned int nextBvttOffset = atomicAdd(nextBvttSize, bvttCountA * bvttCountB);
@@ -295,11 +296,11 @@ __global__ void triangle_intersect_kernel(tri_pair_node_t* triPairs,
     tri_pair_node_t node = triPairs[globalIndex];
     unsigned int triIndexA = node.m_triIndex[0];
     unsigned int triIndexB = node.m_triIndex[1];
-    unsigned int meshIndexA, meshIndexB, primOffsetA, primOffsetB, vertexOffsetA, vertexOffsetB;
+    unsigned int bvhIndexA, bvhIndexB, primOffsetA, primOffsetB, vertexOffsetA, vertexOffsetB;
     read_information(
-        sharedPrimOffsets, sharedVertexOffsets, triIndexA, layoutLength, meshIndexA, primOffsetA, vertexOffsetA);
+        sharedPrimOffsets, sharedVertexOffsets, triIndexA, layoutLength, bvhIndexA, primOffsetA, vertexOffsetA);
     read_information(
-        sharedPrimOffsets, sharedVertexOffsets, triIndexB, layoutLength, meshIndexB, primOffsetB, vertexOffsetB);
+        sharedPrimOffsets, sharedVertexOffsets, triIndexB, layoutLength, bvhIndexB, primOffsetB, vertexOffsetB);
     glm::uvec3 triangleA = primitives[triIndexA];
     glm::uvec3 triangleB = primitives[triIndexB];
     float3 triVerticesA[3];
@@ -309,11 +310,11 @@ __global__ void triangle_intersect_kernel(tri_pair_node_t* triPairs,
     printf("\n");
     printf("global index: %u\n", globalIndex);
     printf("triIndexA: %u\n", triIndexA);
-    printf("meshIndexA: %u\n", meshIndexA);
+    printf("bvhIndexA: %u\n", bvhIndexA);
     printf("primOffsetA: %u\n", primOffsetA);
     printf("vertexOffsetA: %u\n", vertexOffsetA);
     printf("triIndexB: %u\n", triIndexB);
-    printf("meshIndexB: %u\n", meshIndexB);
+    printf("bvhIndexB: %u\n", bvhIndexB);
     printf("primOffsetB: %u\n", primOffsetB);
     printf("vertexOffsetB: %u\n", vertexOffsetB);
 #endif
@@ -372,7 +373,7 @@ __global__ void triangle_intersect_kernel(tri_pair_node_t* triPairs,
             triVerticesA[0], triVerticesA[1], triVerticesA[2], triVerticesB[0], triVerticesB[1], triVerticesB[2]))
     {
         unsigned int intTriPairOffset = atomicAdd(intTriPairCount, 1u);
-        int_tri_pair_node_t intTriPair{meshIndexA, meshIndexB, triIndexA - primOffsetA, triIndexB - primOffsetB};
+        int_tri_pair_node_t intTriPair{bvhIndexA, bvhIndexB, triIndexA - primOffsetA, triIndexB - primOffsetB};
         intTriPairs[intTriPairOffset] = intTriPair;
     }
 }

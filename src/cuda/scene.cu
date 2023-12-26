@@ -1,12 +1,15 @@
 #include <iostream>
 #include <fstream>
+#include <stack>
+
 #include "cuda/scene.cuh"
 #include "cuda/utils.cuh"
 #include "cuda/collide.cuh"
 
 #define OUTPUT_TIMES 1
 
-Scene::Scene() : m_aabbCount(0U), m_primCount(0U), m_vertexCount(0U), m_intTriPairCount(0U), m_detectTimes(0U)
+Scene::Scene()
+    : m_aabbCount(0U), m_primCount(0U), m_vertexCount(0U), m_intTriPairCount(0U), m_detectTimes(0U), m_deviceCount(-1)
 {
     glGenVertexArrays(1U, &m_vertexArrayObj);
     glGenBuffers(1U, &m_vertexBufferObj);
@@ -25,6 +28,11 @@ Scene::~Scene()
 {
     glDeleteVertexArrays(1, &m_vertexArrayObj);
     glDeleteBuffers(1, &m_vertexBufferObj);
+}
+
+unsigned int Scene::getIntTriPairCount() const
+{
+	return m_intTriPairCount;
 }
 
 void Scene::draw()
@@ -46,10 +54,8 @@ void Scene::convertToVertexArray()
     for (int i = 0; i < m_intTriPairCount; i++)
     {
         const auto intTriPair = m_intTriPairs[i];
-        const auto objectA = m_objects[intTriPair.m_meshIndex[0]];
-        const auto objectB = m_objects[intTriPair.m_meshIndex[1]];
-        const auto bvhA = objectA.second;
-        const auto bvhB = objectB.second;
+        const auto bvhA = m_oibvhTrees[intTriPair.m_bvhIndex[0]];
+        const auto bvhB = m_oibvhTrees[intTriPair.m_bvhIndex[1]];
         const auto triangleA = bvhA->m_faces[intTriPair.m_triIndex[0]];
         const auto triangleB = bvhB->m_faces[intTriPair.m_triIndex[1]];
         m_vertices[i * 6] = bvhA->m_positions[triangleA.x];
@@ -69,24 +75,24 @@ void Scene::convertToVertexArray()
     m_convertDone = true;
 }
 
-void Scene::addObject(std::pair<std::shared_ptr<Mesh>, std::shared_ptr<OibvhTree>> object)
+void Scene::addOibvhTree(std::shared_ptr<OibvhTree> oibvhTree)
 {
-    const auto mesh = object.first;
-    const auto bvh = object.second;
+    assert(oibvhTree->m_buildDone);
+
     const unsigned int newBvhOffset = m_aabbCount;
     const unsigned int newPrimOffset = m_primCount;
-    for (const auto& bvhOffset : m_bvhOffsets)
+    for (const auto& bvhOffset : m_aabbOffsets)
     {
         m_bvtts.push_back(bvtt_node_t{bvhOffset, newBvhOffset});
     }
-    m_bvhOffsets.push_back(newBvhOffset);
+    m_aabbOffsets.push_back(newBvhOffset);
     m_primOffsets.push_back(m_primCount);
     m_vertexOffsets.push_back(m_vertexCount);
-    m_primCounts.push_back(mesh->m_facesCount);
-    m_aabbCount += bvh->m_aabbTree.size();
-    m_primCount += mesh->m_facesCount;
-    m_vertexCount += mesh->m_verticesCount;
-    m_objects.push_back(object);
+    m_primCounts.push_back(oibvhTree->m_faces.size());
+    m_aabbCount += oibvhTree->m_aabbTree.size();
+    m_primCount += oibvhTree->m_faces.size();
+    m_vertexCount += oibvhTree->m_positions.size();
+    m_oibvhTrees.push_back(oibvhTree);
 
 #if 0
     std::cout << "--Scene configuration--" << std::endl;
@@ -114,12 +120,92 @@ void Scene::addObject(std::pair<std::shared_ptr<Mesh>, std::shared_ptr<OibvhTree
 #endif
 }
 
-void Scene::detectCollision()
+void Scene::printDeviceInfo(unsigned int deviceId)
 {
-    m_detectTimes++;
-    if (m_detectTimes <= OUTPUT_TIMES)
+    cudaDeviceProp deviceProp;
+    cudaGetDeviceProperties(&deviceProp, deviceId);
+    std::cout << "---Print Device Information---" << std::endl;
+    std::cout << "Device " << deviceId << ": " << deviceProp.name << std::endl;
+    std::cout << "Compute capability: " << deviceProp.major << "." << deviceProp.minor << std::endl;
+    std::cout << "Total global memory: " << deviceProp.totalGlobalMem / 1024 / 1024 << "MB" << std::endl;
+    std::cout << "Shared memory per block: " << deviceProp.sharedMemPerBlock / 1024 << "KB" << std::endl;
+    std::cout << "Registers per block: " << deviceProp.regsPerBlock << std::endl;
+    std::cout << "Warp size: " << deviceProp.warpSize << std::endl;
+    std::cout << "Max threads per block: " << deviceProp.maxThreadsPerBlock << std::endl;
+    std::cout << "Max threads dimension: (" << deviceProp.maxThreadsDim[0] << ", " << deviceProp.maxThreadsDim[1]
+              << ", " << deviceProp.maxThreadsDim[2] << ")" << std::endl;
+    std::cout << "Max grid size: (" << deviceProp.maxGridSize[0] << ", " << deviceProp.maxGridSize[1] << ", "
+              << deviceProp.maxGridSize[2] << ")" << std::endl;
+    std::cout << "Clock rate: " << deviceProp.clockRate / 1000 << "MHz" << std::endl;
+    std::cout << "Total constant memory: " << deviceProp.totalConstMem / 1024 << "KB" << std::endl;
+    std::cout << "Texture alignment: " << deviceProp.textureAlignment << std::endl;
+    std::cout << "Concurrent copy and execution: " << (deviceProp.deviceOverlap ? "Yes" : "No") << std::endl;
+    std::cout << "Number of multiprocessors: " << deviceProp.multiProcessorCount << std::endl;
+    std::cout << "Kernel execution timeout: " << (deviceProp.kernelExecTimeoutEnabled ? "Yes" : "No") << std::endl;
+    std::cout << "Integrated: " << (deviceProp.integrated ? "Yes" : "No") << std::endl;
+    std::cout << std::endl;
+}
+
+void Scene::detectCollision(DeviceType deviceType)
+{
+    if (m_deviceCount == -1)
     {
-        std::cout << "--Detecting collision--" << std::endl;
+        cudaGetDeviceCount(&m_deviceCount);
+    }
+
+    if (deviceType == DeviceType::CPU) // collision detection on cpu
+    {
+        detectCollisionOnCPU();
+    }
+    else // collision detection on gpu
+    {
+        assert((int)deviceType < m_deviceCount);
+        if (m_detectTimes == 0)
+        {
+            printDeviceInfo((unsigned int)deviceType);
+        }
+        detectCollisionOnGPU((unsigned int)deviceType);
+    }
+
+    if (m_detectTimes < OUTPUT_TIMES)
+    {
+        std::cout << std::endl;
+    }
+
+    m_detectTimes++;
+    m_convertDone = false;
+}
+
+void Scene::detectCollisionOnCPU()
+{
+    if (m_detectTimes < OUTPUT_TIMES)
+    {
+        std::cout << "---Detecting collision on cpu---" << std::endl;
+    }
+
+    // prepare
+    std::stack<bvtt_node_t> bvttNodes;
+    assert(!m_bvtts.empty());
+    for (const auto bvtt : m_bvtts)
+    {
+        bvttNodes.push(bvtt);
+    }
+
+    std::vector<tri_pair_node_t> triPairs;
+    //
+    // while (!bvttNodes.empty())
+    //{
+
+    //}
+}
+
+void Scene::detectCollisionOnGPU(unsigned int deviceId)
+{
+    cudaSetDevice(deviceId);
+
+    if (m_detectTimes < OUTPUT_TIMES)
+    {
+        std::cout << "---Detecting collision on gpu---" << std::endl;
     }
     bool converged = false;
     float elapsed_ms = 0.0f;
@@ -129,7 +215,7 @@ void Scene::detectCollision()
     bvtt_node_t* d_dst;
     aabb_box_t* d_aabbs;
     tri_pair_node_t* d_triPairs;
-    unsigned int* d_bvhOffsets;
+    unsigned int* d_aabbOffsets;
     unsigned int* d_primOffsets;
     unsigned int* d_primCounts;
     unsigned int* d_nextBvttSize;
@@ -139,51 +225,51 @@ void Scene::detectCollision()
     deviceMalloc(&d_dst, 10000000);
     deviceMalloc(&d_aabbs, m_aabbCount);
     deviceMalloc(&d_triPairs, 10000000);
-    deviceMalloc(&d_bvhOffsets, m_bvhOffsets.size());
+    deviceMalloc(&d_aabbOffsets, m_aabbOffsets.size());
     deviceMalloc(&d_primOffsets, m_primOffsets.size());
     deviceMalloc(&d_primCounts, m_primCounts.size());
     deviceMalloc(&d_nextBvttSize, 1);
     deviceMalloc(&d_triPairCount, 1);
 
     deviceMemcpy(d_src, m_bvtts.data(), m_bvtts.size());
-    deviceMemcpy(d_bvhOffsets, m_bvhOffsets.data(), m_bvhOffsets.size());
+    deviceMemcpy(d_aabbOffsets, m_aabbOffsets.data(), m_aabbOffsets.size());
     deviceMemcpy(d_primOffsets, m_primOffsets.data(), m_primOffsets.size());
     deviceMemcpy(d_primCounts, m_primCounts.data(), m_primCounts.size());
     deviceMemset(d_triPairCount, 0, 1);
 
-    for (int i = 0; i < m_objects.size(); i++)
+    for (int i = 0; i < m_oibvhTrees.size(); i++)
     {
-        const auto bvh = m_objects[i].second;
-        deviceMemcpy(d_aabbs + m_bvhOffsets[i], bvh->m_aabbTree.data(), bvh->m_aabbTree.size());
+        const auto bvh = m_oibvhTrees[i];
+        deviceMemcpy(d_aabbs + m_aabbOffsets[i], bvh->m_aabbTree.data(), bvh->m_aabbTree.size());
     }
 
     // broad phase
     float elapsed_traversal_ms = 0.0f;
     for (int i = 0; !converged; i++)
     {
-        if (m_detectTimes <= OUTPUT_TIMES)
+        if (m_detectTimes < OUTPUT_TIMES)
         {
             std::cout << "Traversal kernel " << i << ": bvtt size " << h_bvttSize << ", ";
         }
         deviceMemset(d_nextBvttSize, 0, 1);
         elapsed_ms = kernelLaunch([&]() {
             dim3 blockSize =
-                dim3(std::min(256U, std::max(next_power_of_two(m_bvhOffsets.size()), next_power_of_two(h_bvttSize))));
+                dim3(std::min(256U, std::max(next_power_of_two(m_aabbOffsets.size()), next_power_of_two(h_bvttSize))));
             int bx = (h_bvttSize + blockSize.x - 1) / blockSize.x;
             dim3 gridSize = dim3(bx);
             traversal_kernel<<<gridSize, blockSize>>>(d_src,
                                                       d_dst,
                                                       d_aabbs,
                                                       d_triPairs,
-                                                      d_bvhOffsets,
+                                                      d_aabbOffsets,
                                                       d_primOffsets,
                                                       d_primCounts,
                                                       d_nextBvttSize,
                                                       d_triPairCount,
-                                                      m_bvhOffsets.size(),
+                                                      m_aabbOffsets.size(),
                                                       h_bvttSize);
         });
-        if (m_detectTimes <= OUTPUT_TIMES)
+        if (m_detectTimes < OUTPUT_TIMES)
         {
             std::cout << " traversal took " << elapsed_ms << "ms" << std::endl;
         }
@@ -198,22 +284,18 @@ void Scene::detectCollision()
             std::swap(d_src, d_dst);
         }
     }
-    if (m_detectTimes <= OUTPUT_TIMES)
-    {
-        std::cout << "All treversal kernels took: " << elapsed_traversal_ms << "ms" << std::endl;
-    }
-
     cudaFree(d_src);
     cudaFree(d_dst);
     cudaFree(d_aabbs);
-    cudaFree(d_bvhOffsets);
+    cudaFree(d_aabbOffsets);
     cudaFree(d_primCounts);
     cudaFree(d_nextBvttSize);
 
     unsigned int h_triPairCount = 0U;
     hostMemcpy(&h_triPairCount, d_triPairCount, 1);
-    if (m_detectTimes <= OUTPUT_TIMES)
+    if (m_detectTimes % 100 == 0)
     {
+        std::cout << "All treversal kernels took: " << elapsed_traversal_ms << "ms" << std::endl;
         std::cout << "Candidate collision triangle pairs count: " << h_triPairCount << std::endl;
     }
 
@@ -230,7 +312,64 @@ void Scene::detectCollision()
     }
 #endif
 
-    // narrow phase
+// narrow phase
+#if 0
+    auto readInfo = [&](const unsigned int triIndx, unsigned int& bvhIndex) {
+        int l = 0;
+        int r = m_primOffsets.size() - 1;
+        int m;
+        int layoutIdx;
+        while (l <= r)
+        {
+            m = (l + r) / 2;
+            if (triIndx >= m_primOffsets[m])
+            {
+                l = m + 1;
+                layoutIdx = m;
+            }
+            else
+            {
+                r = m - 1;
+            }
+        }
+        bvhIndex = layoutIdx;
+    };
+    tri_pair_node_t* h_triPairs;
+    hostMalloc(&h_triPairs, h_triPairCount);
+    hostMemcpy(h_triPairs, d_triPairs, h_triPairCount);
+    unsigned int intTriPairCount = 0U;
+    for (int i = 0; i < h_triPairCount; i++)
+    {
+        const auto triangleIndexA = h_triPairs[i].m_triIndex[0];
+        const auto triangleIndexB = h_triPairs[i].m_triIndex[1];
+        unsigned int bvhIndexA, bvhIndexB;
+        readInfo(triangleIndexA, bvhIndexA);
+        readInfo(triangleIndexB, bvhIndexB);
+        const unsigned int triOffsetA = m_primOffsets[bvhIndexA];
+        const unsigned int triOffsetB = m_primOffsets[bvhIndexB];
+        const auto triangleA = m_oibvhTrees[bvhIndexA]->m_faces[triangleIndexA - triOffsetA];
+        const auto triangleB = m_oibvhTrees[bvhIndexB]->m_faces[triangleIndexB - triOffsetB];
+        const auto& verticesA = m_oibvhTrees[bvhIndexA]->m_positions;
+        const auto& verticesB = m_oibvhTrees[bvhIndexB]->m_positions;
+        glm::vec3 P1, P2, P3, Q1, Q2, Q3;
+        P1 = verticesA[triangleA.x];
+        P2 = verticesA[triangleA.y];
+        P3 = verticesA[triangleA.z];
+        Q1 = verticesB[triangleB.x];
+        Q2 = verticesB[triangleB.y];
+        Q3 = verticesB[triangleB.z];
+        if (triangleIntersect(P1, P2, P3, Q1, Q2, Q3))
+        {
+            intTriPairCount++;
+        }
+    }
+    if (m_detectTimes < OUTPUT_TIMES)
+    {
+        std::cout << "cpu narrow phase intersect triangle pairs count: " << intTriPairCount << std::endl;
+    }
+    delete[] h_triPairs;
+#endif
+
     glm::uvec3* d_primitives;
     glm::vec3* d_vertices;
     int_tri_pair_node_t* d_intTriPairs;
@@ -242,9 +381,9 @@ void Scene::detectCollision()
     deviceMalloc(&d_intTriPairs, 10000000);
     deviceMalloc(&d_intTriPairCount, 1);
 
-    for (int i = 0; i < m_objects.size(); i++)
+    for (int i = 0; i < m_oibvhTrees.size(); i++)
     {
-        const auto bvh = m_objects[i].second;
+        const auto bvh = m_oibvhTrees[i];
         deviceMemcpy(d_primitives + m_primOffsets[i], bvh->m_faces.data(), bvh->m_faces.size());
         deviceMemcpy(d_vertices + m_vertexOffsets[i], bvh->m_positions.data(), bvh->m_positions.size());
     }
@@ -269,10 +408,11 @@ void Scene::detectCollision()
     hostMemcpy(&m_intTriPairCount, d_intTriPairCount, 1);
     m_intTriPairs.resize(m_intTriPairCount);
     hostMemcpy(m_intTriPairs.data(), d_intTriPairs, m_intTriPairCount);
-    if (m_detectTimes <= OUTPUT_TIMES)
+    if (m_detectTimes % 100 == 0)
     {
         std::cout << "Triangle intersect kernel took: " << elapsed_ms << "ms" << std::endl;
         std::cout << "Intersected triangle pair count: " << m_intTriPairCount << std::endl;
+        std::cout << std::endl;
     }
 
 #if 0
@@ -301,6 +441,4 @@ void Scene::detectCollision()
     cudaFree(d_vertexOffsets);
     cudaFree(d_intTriPairs);
     cudaFree(d_intTriPairCount);
-
-    m_convertDone = false;
 }

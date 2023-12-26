@@ -74,15 +74,15 @@ void OibvhTree::convertToVertexArray()
         std::vector<glm::vec3> cubeVertices;
         std::vector<unsigned int> cubeIndices;
 
-        make_cube(0.5f * (aabb.maximum.x - aabb.minimum.x),
-                  0.5f * (aabb.maximum.y - aabb.minimum.y),
-                  0.5 * (aabb.maximum.z - aabb.minimum.z),
-                  cubeVertices,
-                  cubeIndices);
+        makeCube(0.5f * (aabb.m_maximum.x - aabb.m_minimum.x),
+                 0.5f * (aabb.m_maximum.y - aabb.m_minimum.y),
+                 0.5 * (aabb.m_maximum.z - aabb.m_minimum.z),
+                 cubeVertices,
+                 cubeIndices);
 
         int backFaceLowerLeftVertexIndex = 4;
         glm::vec3 backFaceLowerLeftVertex = cubeVertices[backFaceLowerLeftVertexIndex];
-        glm::vec3 diff = aabb.minimum - backFaceLowerLeftVertex;
+        glm::vec3 diff = aabb.m_minimum - backFaceLowerLeftVertex;
 
         // shift the bounding box to its real position
         for (int i = 0; i < (int)cubeVertices.size(); ++i)
@@ -147,7 +147,7 @@ void OibvhTree::setup()
 {
     if (!m_buildDone)
     {
-        std::cout << "--set up--" << std::endl;
+        std::cout << "---Set up oibvh tree---" << std::endl;
         for (int i = 0; i < m_mesh->m_facesCount; i++)
         {
             m_faces.push_back(
@@ -159,6 +159,7 @@ void OibvhTree::setup()
         }
         std::cout << "faces count: " << m_faces.size() << std::endl;
         std::cout << "vertices count: " << m_positions.size() << std::endl;
+        std::cout << std::endl;
     }
 
     glGenVertexArrays(1U, &m_vertexArrayObj);
@@ -180,7 +181,7 @@ void OibvhTree::setup()
 
 void OibvhTree::refit()
 {
-    // std::cout << "--refit--" << std::endl;
+    // std::cout << "---Refit---" << std::endl;
     for (int i = 0; i < m_mesh->m_verticesCount; i++)
     {
         m_positions[i] = m_mesh->m_vertices[i].m_position;
@@ -241,15 +242,26 @@ void OibvhTree::refit()
 
 void OibvhTree::build()
 {
-    std::cout << "--build oibvh tree--" << std::endl;
+    std::cout << "---Build oibvh tree---" << std::endl;
     int dev;
     float elapsed_ms = 0.0f;
     cudaGetDevice(&dev);
     std::cout << "device id: " << dev << std::endl;
     const unsigned int primitive_count = m_faces.size();
     const unsigned int vertex_count = m_positions.size();
+#if 0
     // std::cout << oibvh_get_size(2147483647) << std::endl;
+    int sum = 262144 * 2 - 1;
+    int a = 118098;
+    while (a)
+    {
+        sum -= a;
+        a /= 2;
+    }
+    std::cout << "sum: " << sum << std::endl;
+#endif
     const unsigned int oibvh_size = oibvh_get_size(primitive_count);
+
     const unsigned int oibvh_internal_node_count = oibvh_size - primitive_count;
     glm::vec3* d_positions;
     glm::uvec3* d_faces;
@@ -288,6 +300,7 @@ void OibvhTree::build()
      aabb == m_mesh->m_aabb ? std::cout << "aabb is correct" << std::endl : std::cout << "aabb is wrong" << std::endl;
      delete[] temp_aabbs;
 #endif
+
     unsigned int* d_mortons_copy;
     deviceMalloc(&d_mortons_copy, primitive_count);
     cudaMemcpy(d_mortons_copy, d_mortons, primitive_count * sizeof(unsigned int), cudaMemcpyDeviceToDevice);
@@ -300,7 +313,6 @@ void OibvhTree::build()
         thrust::stable_sort_by_key(d_mortons_copy_ptr, d_mortons_copy_ptr + primitive_count, d_aabbs_leaf_ptr);
     });
     std::cout << "Sorting took: " << elapsed_ms << "ms" << std::endl;
-    cudaFree(d_mortons);
     cudaFree(d_mortons_copy);
 
 #if 0
@@ -352,14 +364,15 @@ void OibvhTree::build()
         elapsed_ms = kernelLaunch([&]() {
             dim3 blockSize = dim3(m_scheduleParams[k].m_threadsPerGroup);
             dim3 gridSize = dim3(m_scheduleParams[k].m_threads / m_scheduleParams[k].m_threadsPerGroup);
-            oibvh_tree_construction_kernel<<<gridSize, blockSize>>>(m_scheduleParams[k].m_entryLevel,
-                                                                    m_scheduleParams[k].m_realCount,
-                                                                    primitive_count,
-                                                                    m_scheduleParams[k].m_threadsPerGroup,
-                                                                    d_aabbs);
+            oibvh_tree_construction_kernel2<<<gridSize, blockSize>>>(m_scheduleParams[k].m_entryLevel,
+                                                                     m_scheduleParams[k].m_realCount,
+                                                                     primitive_count,
+                                                                     m_scheduleParams[k].m_threadsPerGroup,
+                                                                     d_aabbs);
         });
         std::cout << "  oibvh contruct kernel took: " << elapsed_ms << "ms" << std::endl;
     }
+    std::cout << "count of node in oibvh tree: " << oibvh_size << std::endl;
 
 #if 0
     // log result
@@ -368,9 +381,9 @@ void OibvhTree::build()
     hostMemcpy(temp_aabbs, d_aabbs, oibvh_size);
     std::ofstream outfile;
     outfile.open("C://Code//oibvh//logs//bvh_log.txt");
-    for (int i = 0; i < oibvh_internal_node_count; i++)
+    for (int i = 0; i < oibvh_size; i++)
     {
-        outfile << temp_aabbs[i].minimum << "," << temp_aabbs[i].maximum << std::endl;
+        outfile << temp_aabbs[i] << std::endl;
     }
     // std::cout << m_mesh->m_aabb.minimum << "," << m_mesh->m_aabb.maximum << std::endl;
 #endif
@@ -384,7 +397,9 @@ void OibvhTree::build()
     cudaFree(d_positions);
     cudaFree(d_faces);
     cudaFree(d_aabbs);
+    cudaFree(d_mortons);
 
     // build done
     m_buildDone = true;
+    std::cout << std::endl;
 }

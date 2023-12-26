@@ -40,7 +40,7 @@ void Model::draw(const Shader& shader, const bool haveWireframe) const
 void Model::loadModel(const std::string& path)
 {
     // load start
-    std::cout << "--load model--" << std::endl;
+    std::cout << "---Load model---" << std::endl;
     std::cout << "path: " + path << std::endl;
 
     // read file via ASSIMP
@@ -61,11 +61,8 @@ void Model::loadModel(const std::string& path)
     // process ASSIMP's root node recursively
     processNode(scene->mRootNode, scene);
 
-    m_aabb.minimum = glm::vec3(1e10);
-    m_aabb.maximum = glm::vec3(-1e10);
     m_verticesCount = 0;
     m_facesCount = 0;
-
     for (unsigned int i = 0; i < m_meshes.size(); i++)
     {
         m_verticesCount += m_meshes[i]->m_verticesCount;
@@ -73,22 +70,15 @@ void Model::loadModel(const std::string& path)
         std::cout << "mesh" << i << ": " << m_meshes[i]->m_verticesCount << " vertices, " << m_meshes[i]->m_facesCount
                   << " faces, ";
         const aabb_box_t aabb = m_meshes[i]->m_aabb;
-        std::cout << "aabb (" << aabb.minimum.x << "," << aabb.minimum.y << "," << aabb.minimum.z << ")X";
-        std::cout << "(" << aabb.maximum.x << "," << aabb.maximum.y << "," << aabb.maximum.z << ")" << std::endl;
-        m_aabb.maximum.x = std::fmax(aabb.maximum.x, m_aabb.maximum.x);
-        m_aabb.maximum.y = std::fmax(aabb.maximum.y, m_aabb.maximum.y);
-        m_aabb.maximum.z = std::fmax(aabb.maximum.z, m_aabb.maximum.z);
-
-        m_aabb.minimum.x = std::fmin(aabb.minimum.x, m_aabb.minimum.x);
-        m_aabb.minimum.y = std::fmin(aabb.minimum.y, m_aabb.minimum.y);
-        m_aabb.minimum.z = std::fmin(aabb.minimum.z, m_aabb.minimum.z);
+        std::cout << "aabb bounding box " << aabb << std::endl;
+        m_aabb.merge(aabb);
     }
 
     // total
     std::cout << "total"
               << ": " << m_verticesCount << " vertices, " << m_facesCount << " faces, ";
-    std::cout << "aabb (" << m_aabb.minimum.x << "," << m_aabb.minimum.y << "," << m_aabb.minimum.z << ")X";
-    std::cout << "(" << m_aabb.maximum.x << "," << m_aabb.maximum.y << "," << m_aabb.maximum.z << ")\n" << std::endl;
+    std::cout << "aabb bounding box " << m_aabb << std::endl;
+    std::cout << std::endl;
 }
 
 void Model::processNode(const aiNode* node, const aiScene* scene)

@@ -89,12 +89,10 @@ void Mesh::draw(const Shader& shader, const bool haveWireframe) const
 
 void Mesh::setupAABB()
 {
-    m_aabb.minimum = glm::vec3(1e10);
-    m_aabb.maximum = glm::vec3(-1e10);
     for (const auto& vertex : m_vertices)
     {
-        m_aabb.maximum = glm::max(vertex.m_position, m_aabb.maximum);
-        m_aabb.minimum = glm::min(vertex.m_position, m_aabb.minimum);
+        m_aabb.m_maximum = glm::max(vertex.m_position, m_aabb.m_maximum);
+        m_aabb.m_minimum = glm::min(vertex.m_position, m_aabb.m_minimum);
     }
 }
 

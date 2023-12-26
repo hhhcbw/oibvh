@@ -65,6 +65,8 @@ inline float kernelLaunch(std::function<void()> func, bool measure_time = true)
  */
 __device__ __host__ inline unsigned int next_power_of_two(unsigned int x)
 {
+    if (x == 0)
+        printf("Error in next_power_of_two: x is 0\n");
     x--;
     x |= x >> 1;
     x |= x >> 2;

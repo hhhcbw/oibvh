@@ -1,24 +1,27 @@
 #pragma once
-#include <utility>
 #include "cuda/oibvhTree.cuh"
 #include "utils/mesh.h"
+#include "utils/utils.h"
 #include "cuda/scene.cuh"
 
 typedef struct bvtt_node
 {
-    unsigned int m_bvhIndex[2];
+    unsigned int m_aabbIndex[2];
 } bvtt_node_t;
 
-typedef struct tri_pair_node
+enum class DeviceType
 {
-    unsigned int m_triIndex[2];
-} tri_pair_node_t;
-
-typedef struct int_tri_pair_node
-{
-    unsigned int m_meshIndex[2];
-    unsigned int m_triIndex[2];
-} int_tri_pair_node_t;
+    CPU = -1,
+    GPU0,
+    GPU1,
+    GPU2,
+    GPU3,
+    GPU4,
+    GPU5,
+    GPU6,
+    GPU7,
+    GPU8
+};
 
 class Scene
 {
@@ -34,17 +37,24 @@ public:
     ~Scene();
 
     /**
-     * @brief         Add object to scene
-     * @param[in]     object        Object to add
+     * @brief         Add oibvh tree to scene
+     * @param[in]     oibvhTree      Oibvh tree to add
      * @return        void
      */
-    void addObject(std::pair<std::shared_ptr<Mesh>, std::shared_ptr<OibvhTree>> object);
+    void addOibvhTree(std::shared_ptr<OibvhTree> oibvhTree);
 
     /**
      * @brief         Detect collision between objects
+     * @param[in]     deviceId         Device id
      * @return        void
      */
-    void detectCollision();
+    void detectCollision(DeviceType deviceType = DeviceType::GPU0);
+
+    /**
+     * @brief         Get count of intersect triangle pairs
+     * @return        Count of intersect triangle pairs
+     */
+    unsigned int getIntTriPairCount() const;
 
     /**
      * @brief         Draw collided triangles
@@ -59,15 +69,34 @@ private:
      */
     void convertToVertexArray();
 
+    /**
+     * @brief       Detect collision on cpu
+     */
+    void detectCollisionOnCPU();
+
+    /**
+     * @brief       Detect collision on gpu
+     * @brief       deviceId         Id of device
+     * @return      void
+     */
+    void detectCollisionOnGPU(unsigned int deviceId);
+
+    /**
+     * @brief       Print information of giving device
+     * @param[in]   deviceId          Id of device
+     * @return      void
+     */
+    void printDeviceInfo(unsigned int deviceId);
+
 private:
     /**
-     * @brief  Vector of pairs of mesh and its corresponding oibvh tree
+     * @brief  Vector of  oibvh trees
      */
-    std::vector<std::pair<std::shared_ptr<Mesh>, std::shared_ptr<OibvhTree>>> m_objects;
+    std::vector<std::shared_ptr<OibvhTree>> m_oibvhTrees;
     /**
-     * @brief  Layout bvh offsets array
+     * @brief  Layout aabb offsets array
      */
-    std::vector<unsigned int> m_bvhOffsets;
+    std::vector<unsigned int> m_aabbOffsets;
     /**
      * @brief  Layout primitive offsets array
      */
@@ -124,4 +153,8 @@ private:
      * @brief Have convert to vertices array done or not
      */
     bool m_convertDone;
+    /**
+     * @brief Device count
+     */
+    int m_deviceCount;
 };

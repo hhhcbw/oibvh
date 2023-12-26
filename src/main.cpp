@@ -22,6 +22,8 @@
 #include "utils/camera.h"
 #include "cuda/oibvhTree.cuh"
 #include "cuda/scene.cuh"
+#include "cpu/simpleBVH.h"
+#include "cpu/simpleCollide.h"
 
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
@@ -97,6 +99,7 @@ int main(int, char**)
     bool rotate_bunny2 = false;
     bool detect_collision = false;
     bool draw_collision = false;
+    bool check_result = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
     // glad: load all OpenGL function pointers
@@ -131,8 +134,22 @@ int main(int, char**)
     bunny2.m_meshes[0]->translate(glm::vec3(1.0f, 0.0f, 0.0f));
     treeBunny2->refit();
     Scene scene;
-    scene.addObject(std::make_pair(bunny1.m_meshes[0], treeBunny1));
-    scene.addObject(std::make_pair(bunny2.m_meshes[0], treeBunny2));
+    scene.addOibvhTree(treeBunny1);
+    scene.addOibvhTree(treeBunny2);
+
+    // simple bvh
+    std::shared_ptr<SimpleBVH> simpleBvhBunny1 = std::make_shared<SimpleBVH>(bunny1.m_meshes[0]);
+    std::shared_ptr<SimpleBVH> simpleBvhBunny2 = std::make_shared<SimpleBVH>(bunny2.m_meshes[0]);
+    simpleBvhBunny1->build();
+    // simpleBvhBunny1->log();
+    simpleBvhBunny2->build();
+
+    // simple collide
+    SimpleCollide simpleCollide;
+    simpleCollide.addSimpleBVH(simpleBvhBunny1);
+    simpleCollide.addSimpleBVH(simpleBvhBunny2);
+    simpleCollide.detect();
+
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
     // Main loop
@@ -171,6 +188,7 @@ int main(int, char**)
             ImGui::Checkbox("Detect collision", &detect_collision);
             ImGui::SameLine();
             ImGui::Checkbox("Draw collision", &draw_collision);
+            ImGui::Checkbox("Check result", &check_result);
             ImGui::Checkbox("Free view", &free_view);
 
             ImGui::Text("Application average %.3f ms/frame (%.1f FPS)",
@@ -193,6 +211,7 @@ int main(int, char**)
             {
                 bunny1.m_meshes[0]->rotateZ();
                 treeBunny1->refit();
+                simpleBvhBunny1->unRefit();
             }
 
             shaderMesh.activate();
@@ -229,6 +248,7 @@ int main(int, char**)
             {
                 bunny2.m_meshes[0]->rotateX();
                 treeBunny2->refit();
+                simpleBvhBunny2->unRefit();
             }
 
             shaderMesh.activate();
@@ -262,6 +282,7 @@ int main(int, char**)
         if (detect_collision)
         {
             scene.detectCollision();
+            // simpleCollide.detect();
 
             if (draw_collision)
             {
@@ -276,8 +297,24 @@ int main(int, char**)
                 shaderIntTri.setMat4("model", modelMat);
 
                 scene.draw();
+                // simpleCollide.draw();
 
                 shaderIntTri.deactivate();
+            }
+        }
+
+        if (check_result)
+        {
+            simpleBvhBunny1->refit();
+            simpleBvhBunny2->refit();
+            simpleCollide.detect();
+            if (!simpleCollide.check(scene.getIntTriPairCount()))
+            {
+                // wrong count of intersect triangle pairs
+                std::cout << "ERROR: Wrong count of intersect triangle pairs!!!" << std::endl;
+                std::cout << "Expected: " << simpleCollide.getIntTriPairCount() << std::endl;
+                std::cout << "Actual: " << scene.getIntTriPairCount() << std::endl;
+                exit(1);
             }
         }
 

@@ -42,6 +42,12 @@ __global__ void oibvh_tree_construction_kernel(unsigned int tEntryLev,
                                                unsigned int group_size,
                                                aabb_box_t* aabbs);
 
+__global__ void oibvh_tree_construction_kernel2(unsigned int tEntryLev,
+                                                unsigned int realCount,
+                                                unsigned int primitive_count,
+                                                unsigned int group_size,
+                                                aabb_box_t* aabbs);
+
 /**
  * @brief       Calculate size of whole oibvh tree's nodes
  * @param[in]   t         Primitive count
@@ -96,14 +102,13 @@ oibvh_level_all_virtual_node_count(const unsigned int li, const unsigned int lli
  * @brief        Map implicit index to real index
  * @param[in]    implicitIdx           Implicit  Index
  * @param[in]    leafLev               Level of leaf
- * @param[in]    primCount             Count of primitive
+ * @param[in]    vl                    Count of virtual leaf
  * @return       Real index mapped from implicit index
  */
 __device__ __host__ inline unsigned int
-oibvh_implicit_to_real(const unsigned int implicitIdx, const unsigned int leafLev, const unsigned int primCount)
+oibvh_implicit_to_real(const unsigned int implicitIdx, const unsigned int leafLev, const unsigned int vl)
 {
     const unsigned int level = ilog2(implicitIdx + 1);
-    const unsigned int vl = (1 << leafLev) - primCount;
     return implicitIdx - oibvh_level_all_virtual_node_count(level - 1, leafLev, vl);
 }
 
@@ -111,14 +116,16 @@ oibvh_implicit_to_real(const unsigned int implicitIdx, const unsigned int leafLe
  * @brief      Map real index to implicit index
  * @param[in]  realIdx            Real index
  * @param[in]  leafLev            Level of leaf
- * @param[in]  primCount          Count of primitive
+ * @param[in]  vl                 Count of virtual leaf
  * @return     Implicit index mapped from real index
  */
 __device__ __host__ inline unsigned int
-oibvh_real_to_implicit(const unsigned int realIdx, const unsigned int leafLev, const unsigned int primCount)
+oibvh_real_to_implicit(const unsigned int realIdx, const unsigned int leafLev, const unsigned int vl)
 {
+    if (realIdx == 0)
+        return 0;
+
     const unsigned int level = ilog2(next_power_of_two(realIdx)) - 1;
-    const unsigned int vl = (1 << leafLev) - primCount;
     const unsigned int levelAllVirtualCount = oibvh_level_all_virtual_node_count(level, leafLev, vl);
     const unsigned int levelAllRealCount = (1 << (level + 1)) - 2 - levelAllVirtualCount;
     if (levelAllRealCount < realIdx)
@@ -131,12 +138,12 @@ oibvh_real_to_implicit(const unsigned int realIdx, const unsigned int leafLev, c
 /**
  * @brief       Whether current in oibvh tree have right child
  * @param[in]   implicitIdx        Implicit index of current node
- * @param[in]   leafLev            level of leaf
- * @param[in]   primCount          Count of primitives
+ * @param[in]   leafLev            Level of leaf
+ * @param[in]   vl                 Count of virtual leaves
  * @return      True is have right child, otherwise false
  */
 __device__ __host__ inline bool
-oibvh_have_rchild(const unsigned int implicitIdx, const unsigned int leafLev, const unsigned int primCount)
+oibvh_have_rchild(const unsigned int implicitIdx, const unsigned int leafLev, const unsigned int vl)
 {
     const unsigned int nextLevel = ilog2(implicitIdx + 1) + 1;
 #if 0
@@ -145,9 +152,9 @@ oibvh_have_rchild(const unsigned int implicitIdx, const unsigned int leafLev, co
            leafLev,
            primCount,
            2 * implicitIdx + 4 - (1 << nextLevel),
-           oibvh_level_real_node_count(nextLevel, leafLev, primCount));
+           oibvh_level_real_node_count(nextLevel, leafLev, vl));
 #endif
-    if (2 * implicitIdx + 4 <= (1 << nextLevel) + oibvh_level_real_node_count(nextLevel, leafLev, primCount))
+    if (2 * implicitIdx + 4 <= (1 << nextLevel) + oibvh_level_real_node_count(nextLevel, leafLev, vl))
     {
         return true;
     }
