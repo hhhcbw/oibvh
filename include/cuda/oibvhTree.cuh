@@ -166,5 +166,9 @@ private:
      */
     std::vector<s_param_t> m_scheduleParams;
 
+    glm::vec3* m_devicePositions;
+    glm::uvec3* m_deviceFaces;
+    aabb_box_t* m_deviceAabbs;
+
     friend class Scene;
 };

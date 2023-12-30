@@ -11,6 +11,14 @@
 Scene::Scene()
     : m_aabbCount(0U), m_primCount(0U), m_vertexCount(0U), m_intTriPairCount(0U), m_detectTimes(0U), m_deviceCount(-1)
 {
+    deviceMalloc(&m_deviceSrc, 10000000);
+    deviceMalloc(&m_deviceDst, 10000000);
+    deviceMalloc(&m_deviceTriPairs, 10000000);
+    deviceMalloc(&m_deviceAabbs, 10000000);
+    deviceMalloc(&m_devicePrims, 10000000);
+    deviceMalloc(&m_deviceVertices, 10000000);
+    deviceMalloc(&m_deviceIntTriPairs, 10000000);
+
     glGenVertexArrays(1U, &m_vertexArrayObj);
     glGenBuffers(1U, &m_vertexBufferObj);
 
@@ -26,6 +34,14 @@ Scene::Scene()
 
 Scene::~Scene()
 {
+    cudaFree(m_deviceSrc);
+    cudaFree(m_deviceDst);
+    cudaFree(m_deviceTriPairs);
+    cudaFree(m_deviceAabbs);
+    cudaFree(m_devicePrims);
+    cudaFree(m_deviceVertices);
+    cudaFree(m_deviceIntTriPairs);
+
     glDeleteVertexArrays(1, &m_vertexArrayObj);
     glDeleteBuffers(1, &m_vertexBufferObj);
 }
@@ -211,20 +227,20 @@ void Scene::detectCollisionOnGPU(unsigned int deviceId)
     float elapsed_ms = 0.0f;
     unsigned int h_bvttSize = m_bvtts.size();
 
-    bvtt_node_t* d_src;
-    bvtt_node_t* d_dst;
-    aabb_box_t* d_aabbs;
-    tri_pair_node_t* d_triPairs;
+    bvtt_node_t* d_src = m_deviceSrc;
+    bvtt_node_t* d_dst = m_deviceDst;
+    aabb_box_t* d_aabbs = m_deviceAabbs;
+    tri_pair_node_t* d_triPairs = m_deviceTriPairs;
     unsigned int* d_aabbOffsets;
     unsigned int* d_primOffsets;
     unsigned int* d_primCounts;
     unsigned int* d_nextBvttSize;
     unsigned int* d_triPairCount;
 
-    deviceMalloc(&d_src, 10000000);
-    deviceMalloc(&d_dst, 10000000);
-    deviceMalloc(&d_aabbs, m_aabbCount);
-    deviceMalloc(&d_triPairs, 10000000);
+    // deviceMalloc(&d_src, 2000000);
+    // deviceMalloc(&d_dst, 2000000);
+    // deviceMalloc(&d_aabbs, m_aabbCount);
+    // deviceMalloc(&d_triPairs, 2000000);
     deviceMalloc(&d_aabbOffsets, m_aabbOffsets.size());
     deviceMalloc(&d_primOffsets, m_primOffsets.size());
     deviceMalloc(&d_primCounts, m_primCounts.size());
@@ -284,9 +300,9 @@ void Scene::detectCollisionOnGPU(unsigned int deviceId)
             std::swap(d_src, d_dst);
         }
     }
-    cudaFree(d_src);
-    cudaFree(d_dst);
-    cudaFree(d_aabbs);
+    // cudaFree(d_src);
+    // cudaFree(d_dst);
+    // cudaFree(d_aabbs);
     cudaFree(d_aabbOffsets);
     cudaFree(d_primCounts);
     cudaFree(d_nextBvttSize);
@@ -370,15 +386,15 @@ void Scene::detectCollisionOnGPU(unsigned int deviceId)
     delete[] h_triPairs;
 #endif
 
-    glm::uvec3* d_primitives;
-    glm::vec3* d_vertices;
-    int_tri_pair_node_t* d_intTriPairs;
+    glm::uvec3* d_primitives = m_devicePrims;
+    glm::vec3* d_vertices = m_deviceVertices;
+    int_tri_pair_node_t* d_intTriPairs = m_deviceIntTriPairs;
     unsigned int* d_intTriPairCount; // Count of intersected triangles pair
     unsigned int* d_vertexOffsets;
-    deviceMalloc(&d_primitives, m_primCount);
-    deviceMalloc(&d_vertices, m_vertexCount);
+    //deviceMalloc(&d_primitives, m_primCount);
+    //deviceMalloc(&d_vertices, m_vertexCount);
     deviceMalloc(&d_vertexOffsets, m_vertexOffsets.size());
-    deviceMalloc(&d_intTriPairs, 10000000);
+    //deviceMalloc(&d_intTriPairs, 2000000);
     deviceMalloc(&d_intTriPairCount, 1);
 
     for (int i = 0; i < m_oibvhTrees.size(); i++)
@@ -433,12 +449,12 @@ void Scene::detectCollisionOnGPU(unsigned int deviceId)
     }
 #endif
 
-    cudaFree(d_triPairs);
+    // cudaFree(d_triPairs);
     cudaFree(d_primOffsets);
     cudaFree(d_triPairCount);
-    cudaFree(d_primitives);
-    cudaFree(d_vertices);
+    //cudaFree(d_primitives);
+    //cudaFree(d_vertices);
     cudaFree(d_vertexOffsets);
-    cudaFree(d_intTriPairs);
+    //cudaFree(d_intTriPairs);
     cudaFree(d_intTriPairCount);
 }

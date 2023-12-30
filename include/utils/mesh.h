@@ -16,6 +16,8 @@
 #include "shader.h"
 #include "utils.h"
 
+#include "cuda/transform.cuh"
+
 #define MAX_BONE_INFLUENCE 4
 
 struct Vertex
@@ -205,4 +207,8 @@ private:
      * @brief Center of mesh
      */
     glm::vec3 m_center;
+
+    Transform m_transform;
+
+    std::vector<glm::vec4> m_newVertices;
 };

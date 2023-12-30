@@ -157,4 +157,12 @@ private:
      * @brief Device count
      */
     int m_deviceCount;
+    
+    bvtt_node_t* m_deviceSrc;
+    bvtt_node_t* m_deviceDst;
+    tri_pair_node_t* m_deviceTriPairs;
+    aabb_box_t* m_deviceAabbs;
+    glm::uvec3* m_devicePrims;
+    glm::vec3* m_deviceVertices;
+    int_tri_pair_node_t* m_deviceIntTriPairs;
 };

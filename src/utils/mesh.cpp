@@ -3,7 +3,6 @@
 #include <iostream>
 
 #include "utils/mesh.h"
-#include "cuda/transform.cuh"
 
 Mesh::Mesh(const std::vector<Vertex>& vertices,
            const std::vector<unsigned int>& indices,
@@ -14,6 +13,7 @@ Mesh::Mesh(const std::vector<Vertex>& vertices,
     , m_verticesCount(vertices.size())
     , m_facesCount(indices.size() / 3)
 {
+    m_newVertices.resize(m_verticesCount);
     // calculate bounding box of mesh
     setupAABB();
     // now that we have all the required data, set the vertex buffers and its attribute pointers.
@@ -31,6 +31,7 @@ Mesh::Mesh(const Mesh& other)
     , m_aabb(other.m_aabb)
     , m_center(other.m_center)
 {
+    m_newVertices.resize(m_verticesCount);
     setupMesh();
 }
 
@@ -186,20 +187,20 @@ void Mesh::translate(const glm::vec3 translation)
 void Mesh::transform(const glm::mat4 transformMat)
 {
     m_center = glm::vec3(transformMat * glm::vec4(m_center, 1.0f));
-    std::vector<glm::vec4> newVertices(m_vertices.size());
+    /*std::vector<glm::vec4> newVertices(m_vertices.size());*/
     // std::vector<glm::vec4> newNormals(m_vertices.size());
     for (int i = 0; i < m_verticesCount; i++)
     {
-        newVertices[i] = glm::vec4(m_vertices[i].m_position, 1.0f);
+        m_newVertices[i] = glm::vec4(m_vertices[i].m_position, 1.0f);
         // newNormals[i] = glm::vec4(m_vertices[i].m_normal, 0.0f);
     }
 
-    transformVec4(newVertices, transformMat);
+    m_transform.transformVec4(m_newVertices, transformMat);
     // transformVec4(newNormals, transformMat);
 
     for (int i = 0; i < m_verticesCount; i++)
     {
-        m_vertices[i].m_position = glm::vec3(newVertices[i]);
+        m_vertices[i].m_position = glm::vec3(m_newVertices[i]);
         // m_vertices[i].m_normal = glm::vec3(newNormals[i]);
     }
 

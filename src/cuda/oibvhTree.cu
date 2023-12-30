@@ -8,6 +8,9 @@
 
 OibvhTree::OibvhTree(const std::shared_ptr<Mesh> mesh) : m_mesh(mesh), m_convertDone(false), m_buildDone(false)
 {
+    deviceMalloc(&m_devicePositions, 10000000);
+    deviceMalloc(&m_deviceFaces, 10000000);
+    deviceMalloc(&m_deviceAabbs, 10000000);
     setup();
 }
 
@@ -22,11 +25,19 @@ OibvhTree::OibvhTree(const std::shared_ptr<OibvhTree> other, const std::shared_p
     , m_indices(other->m_indices)
     , m_scheduleParams(other->m_scheduleParams)
 {
+    deviceMalloc(&m_devicePositions, 10000000);
+    deviceMalloc(&m_deviceFaces, 10000000);
+    deviceMalloc(&m_deviceAabbs, 10000000);
+
     setup();
 }
 
 OibvhTree::~OibvhTree()
 {
+    cudaFree(m_devicePositions);
+    cudaFree(m_deviceFaces);
+    cudaFree(m_deviceAabbs);
+
     glDeleteVertexArrays(1, &m_vertexArrayObj);
     glDeleteBuffers(1, &m_vertexBufferObj);
     glDeleteBuffers(1, &m_elementBufferObj);
@@ -191,12 +202,9 @@ void OibvhTree::refit()
     const unsigned int vertex_count = m_positions.size();
     const unsigned int oibvh_size = oibvh_get_size(primitive_count);
     const unsigned int oibvh_internal_node_count = oibvh_size - primitive_count;
-    glm::vec3* d_positions;
-    glm::uvec3* d_faces;
-    aabb_box_t* d_aabbs;
-    deviceMalloc(&d_positions, vertex_count);
-    deviceMalloc(&d_faces, primitive_count);
-    deviceMalloc(&d_aabbs, oibvh_size);
+    glm::vec3* d_positions = m_devicePositions;
+    glm::uvec3* d_faces = m_deviceFaces;
+    aabb_box_t* d_aabbs = m_deviceAabbs;
     deviceMemcpy(d_positions, m_positions.data(), vertex_count);
     deviceMemcpy(d_faces, m_faces.data(), primitive_count);
 
@@ -233,9 +241,9 @@ void OibvhTree::refit()
     }
 
     hostMemcpy(m_aabbTree.data(), d_aabbs, oibvh_size);
-    cudaFree(d_positions);
-    cudaFree(d_faces);
-    cudaFree(d_aabbs);
+    //cudaFree(d_positions);
+    //cudaFree(d_faces);
+    //cudaFree(d_aabbs);
 
     m_convertDone = false;
 }
