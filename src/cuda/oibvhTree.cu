@@ -388,7 +388,7 @@ void OibvhTree::build()
     hostMalloc(&temp_aabbs, oibvh_size);
     hostMemcpy(temp_aabbs, d_aabbs, oibvh_size);
     std::ofstream outfile;
-    outfile.open("C://Code//oibvh//logs//bvh_log.txt");
+    outfile.open("..//..//..//logs//bvh_log.txt");
     for (int i = 0; i < oibvh_size; i++)
     {
         outfile << temp_aabbs[i] << std::endl;

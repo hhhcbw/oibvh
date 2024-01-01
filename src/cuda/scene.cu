@@ -5,6 +5,7 @@
 #include "cuda/scene.cuh"
 #include "cuda/utils.cuh"
 #include "cuda/collide.cuh"
+#include "cuda/oibvh.cuh"
 
 #define OUTPUT_TIMES 1
 
@@ -48,7 +49,7 @@ Scene::~Scene()
 
 unsigned int Scene::getIntTriPairCount() const
 {
-	return m_intTriPairCount;
+    return m_intTriPairCount;
 }
 
 void Scene::draw()
@@ -97,10 +98,6 @@ void Scene::addOibvhTree(std::shared_ptr<OibvhTree> oibvhTree)
 
     const unsigned int newBvhOffset = m_aabbCount;
     const unsigned int newPrimOffset = m_primCount;
-    for (const auto& bvhOffset : m_aabbOffsets)
-    {
-        m_bvtts.push_back(bvtt_node_t{bvhOffset, newBvhOffset});
-    }
     m_aabbOffsets.push_back(newBvhOffset);
     m_primOffsets.push_back(m_primCount);
     m_vertexOffsets.push_back(m_vertexCount);
@@ -112,11 +109,6 @@ void Scene::addOibvhTree(std::shared_ptr<OibvhTree> oibvhTree)
 
 #if 0
     std::cout << "--Scene configuration--" << std::endl;
-    std::cout << "bvtt nodes array: ";
-    for (const auto& bvtt : m_bvtts)
-    {
-        std::cout << "(" << bvtt.m_bvhIndex[0] << "," << bvtt.m_bvhIndex[1] << ") ";
-    }
     std::cout << std::endl << "bvh offsets array: ";
     for (const auto& bvhOffset : m_bvhOffsets)
     {
@@ -162,7 +154,7 @@ void Scene::printDeviceInfo(unsigned int deviceId)
     std::cout << std::endl;
 }
 
-void Scene::detectCollision(DeviceType deviceType)
+void Scene::detectCollision(const DeviceType deviceType, const unsigned int entryLevel, const unsigned int expandLevels)
 {
     if (m_deviceCount == -1)
     {
@@ -180,7 +172,7 @@ void Scene::detectCollision(DeviceType deviceType)
         {
             printDeviceInfo((unsigned int)deviceType);
         }
-        detectCollisionOnGPU((unsigned int)deviceType);
+        detectCollisionOnGPU((unsigned int)deviceType, entryLevel, expandLevels);
     }
 
     if (m_detectTimes < OUTPUT_TIMES)
@@ -208,6 +200,7 @@ void Scene::detectCollisionOnCPU()
     }
 
     std::vector<tri_pair_node_t> triPairs;
+    // TODO: cpu collision detection
     //
     // while (!bvttNodes.empty())
     //{
@@ -215,7 +208,42 @@ void Scene::detectCollisionOnCPU()
     //}
 }
 
-void Scene::detectCollisionOnGPU(unsigned int deviceId)
+void Scene::expandBvttNodes(const unsigned int entryLevel)
+{
+    m_bvtts.clear();
+    for (int i = 0; i < m_aabbOffsets.size(); i++)
+        for (int j = i + 1; j < m_aabbOffsets.size(); j++)
+        {
+            const unsigned int primCountNextPower2A = next_power_of_two(m_primCounts[i]);
+            const unsigned int primCountNextPower2B = next_power_of_two(m_primCounts[j]);
+            const unsigned int virtualCountA = primCountNextPower2A - m_primCounts[i];
+            const unsigned int virtualCountB = primCountNextPower2B - m_primCounts[j];
+            const unsigned int leafLevA = ilog2(primCountNextPower2A);
+            const unsigned int leafLevB = ilog2(primCountNextPower2B);
+            const unsigned int entryLevelA = std::min(leafLevA, entryLevel);
+            const unsigned int entryLevelB = std::min(leafLevB, entryLevel);
+            const unsigned int startImplicitIdxA = oibvh_get_most_left_descendant_implicitIdx(0, entryLevelA);
+            const unsigned int startImplicitIdxB = oibvh_get_most_left_descendant_implicitIdx(0, entryLevelB);
+            const unsigned int mostRightValidImplicitIdxA =
+                oibvh_get_most_right_valid_implicitIdx(entryLevelA, leafLevA, virtualCountA);
+            const unsigned int mostRightValidImplicitIdxB =
+                oibvh_get_most_right_valid_implicitIdx(entryLevelB, leafLevB, virtualCountB);
+
+            for (int p = oibvh_implicit_to_real(startImplicitIdxA, leafLevA, virtualCountA);
+                 p <= oibvh_implicit_to_real(mostRightValidImplicitIdxA, leafLevA, virtualCountA);
+                 p++)
+                for (int q = oibvh_implicit_to_real(startImplicitIdxB, leafLevB, virtualCountB);
+                     q <= oibvh_implicit_to_real(mostRightValidImplicitIdxB, leafLevB, virtualCountB);
+                     q++)
+                {
+                    m_bvtts.push_back(bvtt_node_t{p + m_aabbOffsets[i], q + m_aabbOffsets[j]});
+                }
+        }
+}
+
+void Scene::detectCollisionOnGPU(const unsigned int deviceId,
+                                 const unsigned int entryLevel,
+                                 const unsigned int expandLevels)
 {
     cudaSetDevice(deviceId);
 
@@ -223,6 +251,9 @@ void Scene::detectCollisionOnGPU(unsigned int deviceId)
     {
         std::cout << "---Detecting collision on gpu---" << std::endl;
     }
+    // expand initaial bvtt nodes
+    expandBvttNodes(entryLevel);
+
     bool converged = false;
     float elapsed_ms = 0.0f;
     unsigned int h_bvttSize = m_bvtts.size();
@@ -283,7 +314,8 @@ void Scene::detectCollisionOnGPU(unsigned int deviceId)
                                                       d_nextBvttSize,
                                                       d_triPairCount,
                                                       m_aabbOffsets.size(),
-                                                      h_bvttSize);
+                                                      h_bvttSize,
+                                                      expandLevels);
         });
         if (m_detectTimes < OUTPUT_TIMES)
         {
@@ -391,10 +423,10 @@ void Scene::detectCollisionOnGPU(unsigned int deviceId)
     int_tri_pair_node_t* d_intTriPairs = m_deviceIntTriPairs;
     unsigned int* d_intTriPairCount; // Count of intersected triangles pair
     unsigned int* d_vertexOffsets;
-    //deviceMalloc(&d_primitives, m_primCount);
-    //deviceMalloc(&d_vertices, m_vertexCount);
+    // deviceMalloc(&d_primitives, m_primCount);
+    // deviceMalloc(&d_vertices, m_vertexCount);
     deviceMalloc(&d_vertexOffsets, m_vertexOffsets.size());
-    //deviceMalloc(&d_intTriPairs, 2000000);
+    // deviceMalloc(&d_intTriPairs, 2000000);
     deviceMalloc(&d_intTriPairCount, 1);
 
     for (int i = 0; i < m_oibvhTrees.size(); i++)
@@ -452,9 +484,9 @@ void Scene::detectCollisionOnGPU(unsigned int deviceId)
     // cudaFree(d_triPairs);
     cudaFree(d_primOffsets);
     cudaFree(d_triPairCount);
-    //cudaFree(d_primitives);
-    //cudaFree(d_vertices);
+    // cudaFree(d_primitives);
+    // cudaFree(d_vertices);
     cudaFree(d_vertexOffsets);
-    //cudaFree(d_intTriPairs);
+    // cudaFree(d_intTriPairs);
     cudaFree(d_intTriPairCount);
 }

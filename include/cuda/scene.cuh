@@ -46,9 +46,13 @@ public:
     /**
      * @brief         Detect collision between objects
      * @param[in]     deviceId         Device id
+     * @param[in]     entryLevel       Entry level of bvtt tree
+     * @param[in]     expandLevels     Levels of every expansion
      * @return        void
      */
-    void detectCollision(DeviceType deviceType = DeviceType::GPU0);
+    void detectCollision(const DeviceType deviceType = DeviceType::GPU0,
+                         const unsigned int entryLevel = 0,
+                         const unsigned int expandLevels = 1);
 
     /**
      * @brief         Get count of intersect triangle pairs
@@ -77,9 +81,19 @@ private:
     /**
      * @brief       Detect collision on gpu
      * @brief       deviceId         Id of device
+     * @param[in]   entryLevel       Entry level of bvtt tree
+     * @param[in]   expandLevels     Levels of every expansion
      * @return      void
      */
-    void detectCollisionOnGPU(unsigned int deviceId);
+    void
+    detectCollisionOnGPU(const unsigned int deviceId, const unsigned int entryLevel, const unsigned int expandLevels);
+
+    /**
+     * @brief       Expand initial bvtt nodes
+     * @param[in]   entryLevel     Entry level of bvtt tree
+     * @return      void
+     */
+    void expandBvttNodes(const unsigned int entryLevel);
 
     /**
      * @brief       Print information of giving device
@@ -157,7 +171,7 @@ private:
      * @brief Device count
      */
     int m_deviceCount;
-    
+
     bvtt_node_t* m_deviceSrc;
     bvtt_node_t* m_deviceDst;
     tri_pair_node_t* m_deviceTriPairs;

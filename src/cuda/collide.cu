@@ -6,6 +6,9 @@
 #include "cuda/oibvh.cuh"
 #include "cuda/utils.cuh"
 
+#define min(x, y) (x < y ? x : y)
+#define LOCALMEMSIZE 2048
+
 __device__ inline bool overlap(const aabb_box_t& aabb1, const aabb_box_t& aabb2)
 {
     return (aabb1.m_minimum.x <= aabb2.m_maximum.x && aabb1.m_maximum.x >= aabb2.m_minimum.x) &&
@@ -87,7 +90,8 @@ __global__ void traversal_kernel(bvtt_node_t* src,
                                  unsigned int* nextBvttSize,
                                  unsigned int* triPairCount,
                                  unsigned int layoutLength,
-                                 unsigned int bvttSize)
+                                 unsigned int bvttSize,
+                                 unsigned int expandLevels)
 {
     unsigned int globalIndex = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int localIndex = threadIdx.x;
@@ -117,157 +121,145 @@ __global__ void traversal_kernel(bvtt_node_t* src,
     const unsigned int aabbIndexB = node.m_aabbIndex[1];
     aabb_box_t aabbA = aabbs[aabbIndexA];
     aabb_box_t aabbB = aabbs[aabbIndexB];
-    if (!overlap(aabbA, aabbB)) // AABB overlap fail
-    {
-        return;
-    }
+    unsigned int aabbOffsetA, aabbOffsetB;
+    unsigned int startImplicitIdxA, startImplicitIdxB;
+    unsigned int expandNodeCountA = 0;
+    unsigned int expandNodeCountB = 0;
+    unsigned int realIndexA, realIndexB;
+    unsigned int virtualCountA, virtualCountB;
+    unsigned int levelA, levelB;
+    unsigned int leafLevA, leafLevB;
+    unsigned int numData = 0;
 
-    unsigned int aabbOffsetA, primOffsetA, primitiveCountA; // A oibvh tree
-    unsigned int aabbOffsetB, primOffsetB, primitiveCountB; // B oibvh tree
-    read_information(sharedAabbOffsets,
-                     sharedPrimOffsets,
-                     sharedPrimCounts,
-                     aabbIndexA,
-                     layoutLength,
-                     aabbOffsetA,
-                     primOffsetA,
-                     primitiveCountA);
-    read_information(sharedAabbOffsets,
-                     sharedPrimOffsets,
-                     sharedPrimCounts,
-                     aabbIndexB,
-                     layoutLength,
-                     aabbOffsetB,
-                     primOffsetB,
-                     primitiveCountB);
-    const unsigned int primCountNextPower2A = next_power_of_two(primitiveCountA);
-    const unsigned int primCountNextPower2B = next_power_of_two(primitiveCountB);
-    const unsigned int virtualCountA = primCountNextPower2A - primitiveCountA;
-    const unsigned int virtualCountB = primCountNextPower2B - primitiveCountB;
-    const unsigned int leafLevA = ilog2(primCountNextPower2A);
-    const unsigned int leafLevB = ilog2(primCountNextPower2B);
-    const unsigned int realIndexA = aabbIndexA - aabbOffsetA;
-    const unsigned int realIndexB = aabbIndexB - aabbOffsetB;
-    const unsigned int implicitIndexA = oibvh_real_to_implicit(realIndexA, leafLevA, virtualCountA);
-    const unsigned int implicitIndexB = oibvh_real_to_implicit(realIndexB, leafLevB, virtualCountB);
-#if 0
-    if (realIndexA != oibvh_implicit_to_real(implicitIndexA, leafLevA, virtualCountA))
+    if (overlap(aabbA, aabbB)) // AABB overlap
     {
-        printf("implicitIndexA can't map back to realIndexA\n");
-    }
-    if (realIndexB != oibvh_implicit_to_real(implicitIndexB, leafLevB, virtualCountB))
-    {
-        printf("implicitIndexB can't map back to realIndexB\n");
-    }
-#endif
-    const unsigned int levelA = ilog2(implicitIndexA + 1);
-    const unsigned int levelB = ilog2(implicitIndexB + 1);
-#if 0
-    if (levelA >= 1 && levelB >= 1 &&
-        !overlap(aabbs[aabbOffsetA + oibvh_implicit_to_real((implicitIndexA - 1) / 2, leafLevA, virtualCountA)],
-                 aabbs[aabbOffsetB + oibvh_implicit_to_real((implicitIndexB - 1) / 2, leafLevB, virtualCountB)]))
-    {
-        printf("parent don't overlap!\n");
-    }
-#endif
-#if 0
-    printf("\n");
-    printf("global index: %u\n", globalIndex);
-    printf("aabbOffsetA: %u\n", aabbOffsetA);
-    printf("primOffsetA: %u\n", primOffsetA);
-    printf("primitiveCountA: %u\n", primitiveCountA);
-    printf("primCountNextPower2A: %u\n", primCountNextPower2A);
-    printf("levelA: %u\n", levelA);
-    printf("leafLevA: %u\n", leafLevA);
-    printf("realIndexA: %u\n", realIndexA);
-    printf("implicitIndexA: %u\n", implicitIndexA);
-    printf("aabbOffsetB: %u\n", aabbOffsetB);
-    printf("primOffsetB: %u\n", primOffsetB);
-    printf("primitiveCountB: %u\n", primitiveCountB);
-    printf("primCountNextPower2B: %u\n", primCountNextPower2B);
-    printf("levelB: %u\n", levelB);
-    printf("leafLevB: %u\n", leafLevB);
-    printf("realIndexB: %u\n", realIndexB);
-    printf("implicitIndexB: %u\n", implicitIndexB);
-#endif
+        // expand bvtt node
+        unsigned int primOffsetA, primitiveCountA; // A oibvh tree
+        unsigned int primOffsetB, primitiveCountB; // B oibvh tree
+        read_information(sharedAabbOffsets,
+                         sharedPrimOffsets,
+                         sharedPrimCounts,
+                         aabbIndexA,
+                         layoutLength,
+                         aabbOffsetA,
+                         primOffsetA,
+                         primitiveCountA);
+        read_information(sharedAabbOffsets,
+                         sharedPrimOffsets,
+                         sharedPrimCounts,
+                         aabbIndexB,
+                         layoutLength,
+                         aabbOffsetB,
+                         primOffsetB,
+                         primitiveCountB);
+        const unsigned int primCountNextPower2A = next_power_of_two(primitiveCountA);
+        const unsigned int primCountNextPower2B = next_power_of_two(primitiveCountB);
+        virtualCountA = primCountNextPower2A - primitiveCountA;
+        virtualCountB = primCountNextPower2B - primitiveCountB;
+        leafLevA = ilog2(primCountNextPower2A);
+        leafLevB = ilog2(primCountNextPower2B);
+        realIndexA = aabbIndexA - aabbOffsetA;
+        realIndexB = aabbIndexB - aabbOffsetB;
+        const unsigned int implicitIndexA = oibvh_real_to_implicit(realIndexA, leafLevA, virtualCountA);
+        const unsigned int implicitIndexB = oibvh_real_to_implicit(realIndexB, leafLevB, virtualCountB);
+        levelA = ilog2(implicitIndexA + 1);
+        levelB = ilog2(implicitIndexB + 1);
 
-    // expand bvtt
-    if (levelA == leafLevA && levelB == leafLevB) // a and b are both at leaf node
-    {
-        const unsigned int primIndexA = primOffsetA + implicitIndexA + 1 - (1 << leafLevA);
-        const unsigned int primIndexB = primOffsetB + implicitIndexB + 1 - (1 << leafLevB);
-        const tri_pair_node_t triPair{primIndexA, primIndexB};
-        const unsigned int triPairIndex = atomicAdd(triPairCount, 1u);
-        triPairs[triPairIndex] = triPair;
-
-#if 0
-        printf("\n");
-        printf("levelA: %u\n", levelA);
-        printf("implicitIndexA: %u\n", implicitIndexA);
-        printf("primOffsetA: %u\n", primOffsetA);
-        printf("primIndexA: %u\n", primIndexA);
-        printf("levelB: %u\n", levelB);
-        printf("implicitIndexB: %u\n", implicitIndexB);
-        printf("primOffsetB: %u\n", primOffsetB);
-        printf("primIndexB: %u\n", primIndexB);
-#endif
-
-        return;
-    }
-
-    unsigned int bvttNodeA[2];
-    unsigned int bvttNodeB[2];
-    unsigned int bvttCountA = 0;
-    unsigned int bvttCountB = 0;
-    if (levelA != leafLevA)
-    {
-        // left child
-        bvttNodeA[bvttCountA++] = oibvh_implicit_to_real(implicitIndexA * 2 + 1, leafLevA, virtualCountA) + aabbOffsetA;
-        if (oibvh_have_rchild(implicitIndexA, leafLevA, virtualCountA))
+        if (levelA == leafLevA && levelB == leafLevB) // a and b are both at leaf node
         {
-            // right child
-            bvttNodeA[bvttCountA++] =
-                oibvh_implicit_to_real(implicitIndexA * 2 + 2, leafLevA, virtualCountA) + aabbOffsetA;
+            const unsigned int primIndexA = primOffsetA + implicitIndexA + 1 - (1 << leafLevA);
+            const unsigned int primIndexB = primOffsetB + implicitIndexB + 1 - (1 << leafLevB);
+            const tri_pair_node_t triPair{primIndexA, primIndexB};
+            const unsigned int triPairIndex = atomicAdd(triPairCount, 1u);
+            triPairs[triPairIndex] = triPair;
         }
-    }
-    else
-    {
-        // current node
-        bvttNodeA[bvttCountA++] = aabbIndexA;
-    }
-    if (levelB != leafLevB)
-    {
-        // left child
-        bvttNodeB[bvttCountB++] =
-            oibvh_implicit_to_real(implicitIndexB * 2 + 1, leafLevB, virtualCountB) + aabbOffsetB;
-        if (oibvh_have_rchild(implicitIndexB, leafLevB, virtualCountB))
+        else
         {
-            // right child
-            bvttNodeB[bvttCountB++] =
-                oibvh_implicit_to_real(implicitIndexB * 2 + 2, leafLevB, virtualCountB) + aabbOffsetB;
+            const unsigned int nextLevelA = min(leafLevA, levelA + expandLevels);
+            const unsigned int nextLevelB = min(leafLevB, levelB + expandLevels);
+            startImplicitIdxA = oibvh_get_most_left_descendant_implicitIdx(implicitIndexA, nextLevelA - levelA);
+            startImplicitIdxB = oibvh_get_most_left_descendant_implicitIdx(implicitIndexB, nextLevelB - levelB);
+            const unsigned int mostRightValidImplicitIdxA =
+                oibvh_get_most_right_valid_implicitIdx(nextLevelA, leafLevA, virtualCountA);
+            const unsigned int mostRightValidImplicitIdxB =
+                oibvh_get_most_right_valid_implicitIdx(nextLevelB, leafLevB, virtualCountB);
+            expandNodeCountA = min((1 << (nextLevelA - levelA)), mostRightValidImplicitIdxA - startImplicitIdxA + 1);
+            expandNodeCountB = min((1 << (nextLevelB - levelB)), mostRightValidImplicitIdxB - startImplicitIdxB + 1);
         }
-    }
-    else
-    {
-        // current node
-        bvttNodeB[bvttCountB++] = aabbIndexB;
+        // printf("numData: %u\n", numData);
+        numData = expandNodeCountA * expandNodeCountB;
     }
 
-    const unsigned int nextBvttOffset = atomicAdd(nextBvttSize, bvttCountA * bvttCountB);
-    for (unsigned int i = 0; i < bvttCountA; i++)
-        for (unsigned int j = 0; j < bvttCountB; j++)
+    // write bvtt nodes
+    __shared__ bvtt_node_t bvttNodes[LOCALMEMSIZE];
+    __shared__ unsigned int C;
+    __shared__ unsigned int baseOffset;
+    __shared__ unsigned int upVal;
+    upVal = 0;
+    C = 0;
+    __syncthreads();
+    atomicMax(&upVal, localIndex);
+    int times = 0;
+    int limitNumData = blockDim.x * (1 << (2 * expandLevels));
+    unsigned int c;
+    unsigned int checkpoint = 0;
+    int indexOffsetA = 0;
+    int indexOffsetB = 0;
+
+    do
+    {
+        if (numData > 0)
         {
-            dst[nextBvttOffset + i * bvttCountB + j] = bvtt_node_t{bvttNodeA[i], bvttNodeB[j]};
+            c = atomicAdd(&C, numData) - checkpoint;
+            if (c < LOCALMEMSIZE)
+            {
+                unsigned int r = LOCALMEMSIZE - c; // remaining space
+                unsigned int w = min(numData, r);  // amount written
+                // write bvtt nodes to share memory
+                for (int cnt = 0; cnt < w; cnt++)
+                {
+                    realIndexA = oibvh_implicit_to_real(startImplicitIdxA + indexOffsetA, leafLevA, virtualCountA);
+                    realIndexB = oibvh_implicit_to_real(startImplicitIdxB + indexOffsetB, leafLevB, virtualCountB);
+                    bvttNodes[c + cnt] = bvtt_node_t{realIndexA + aabbOffsetA, realIndexB + aabbOffsetB};
+                    indexOffsetB++;
+                    if (indexOffsetB % expandNodeCountB == 0)
+                    {
+                        indexOffsetB = 0;
+                        indexOffsetA++;
+                    }
+                }
+                numData = numData - w;
+            }
         }
-#if 0
-    printf("\n");
-    printf("global index: %u\n", globalIndex);
-    printf("nextBvttOffset: %u\n", nextBvttOffset);
-    printf("levelA: %u\n", levelA);
-    printf("bvttCountA: %u\n", bvttCountA);
-    printf("levelB: %u\n", levelB);
-    printf("bvttCountB: %u\n", bvttCountB);
-#endif
+        __syncthreads();
+        unsigned int s = min(C - checkpoint, LOCALMEMSIZE);
+        //printf("s: %u\n", s);
+        if (s > 0)
+        {
+            checkpoint = C;
+            if (localIndex == 0)
+            {
+                baseOffset = atomicAdd(nextBvttSize, s);
+            }
+            //printf("baseOffset: %u\n", baseOffset);
+            __syncthreads();
+            // write bvtt node from share memory to global memory
+            for (int i = 0; i < (LOCALMEMSIZE + upVal - 1) / upVal; i++)
+            {
+                if (i * upVal + localIndex >= s)
+                {
+                    break;
+                }
+                dst[baseOffset + i * upVal + localIndex] = bvttNodes[i * upVal + localIndex];
+            }
+            __syncthreads();
+        }
+        else
+        {
+            break;
+        }
+        times++;
+    } while (times * LOCALMEMSIZE < limitNumData);
 }
 
 __global__ void triangle_intersect_kernel(tri_pair_node_t* triPairs,

@@ -163,3 +163,28 @@ oibvh_have_rchild(const unsigned int implicitIdx, const unsigned int leafLev, co
         return false;
     }
 }
+
+/**
+ * @brief      Get current node's most left descendant's implicit index which is descendLev after current node's level
+ * @param[in]  implicitIdx        Implicit index of current node
+ * @param[in]  descendLev         Level of descendant after current node's level
+ * @return     Implicit index of current node's most left descendant
+ */
+__device__ __host__ inline unsigned int oibvh_get_most_left_descendant_implicitIdx(const unsigned int implicitIdx,
+                                                                                   const unsigned int descendLev)
+{
+    return (1 << descendLev) * implicitIdx + (1 << descendLev) - 1;
+}
+
+/**
+ * @brief      Get most right valid implicit index at giving level
+ * @param[in]  level          Giving level
+ * @param[in]  leafLev        Level of leaf
+ * @param[in]  vl             Count of virtual leaves
+ * @return     Most right valid implicit index
+ */
+__device__ __host__ inline unsigned int
+oibvh_get_most_right_valid_implicitIdx(const unsigned int level, const unsigned int leafLev, const unsigned int vl)
+{
+    return ((1 << (level + 1)) - 2) - oibvh_level_virtual_node_count(level, leafLev, vl);
+}

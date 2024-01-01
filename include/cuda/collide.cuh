@@ -13,7 +13,8 @@ __global__ void traversal_kernel(bvtt_node_t* src,
                                  unsigned int* nextBvttSize,
                                  unsigned int* triPairCount,
                                  unsigned int layoutLength,
-                                 unsigned int bvttSize);
+                                 unsigned int bvttSize, 
+                                 unsigned int expandLevels);
 
 __global__ void triangle_intersect_kernel(tri_pair_node_t* triPairs,
                                           glm::uvec3* primitives,

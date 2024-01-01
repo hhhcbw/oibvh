@@ -45,7 +45,7 @@ public:
      * @param[in] path       Path to log file
      * @return    void
      */
-    void log(const std::string& path = std::string("C://Code//oibvh//logs//simple_bvh_log.txt")) const;
+    void log(const std::string& path = std::string("..//..//..//logs//simple_bvh_log.txt")) const;
 
     /**
      * @brief   Mesh updates and simple bvh is unrefit

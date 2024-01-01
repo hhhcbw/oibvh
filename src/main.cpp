@@ -110,22 +110,22 @@ int main(int, char**)
         return -1;
     }
 
-    const char vertexIntTriPath[] = "C://Code//oibvh//shaders//temp_vertex_shader.glsl";
-    const char fragmentIntTriPath[] = "C://Code//oibvh//shaders//temp_fragment_shader.glsl";
+    const char vertexIntTriPath[] = "..//..//..//shaders//temp_vertex_shader.glsl";
+    const char fragmentIntTriPath[] = "..//..//..//shaders//temp_fragment_shader.glsl";
     Shader shaderIntTri(vertexIntTriPath, fragmentIntTriPath);
 
-    const char vertexMeshPath[] = "C://Code//oibvh//shaders//mesh_vertex_shader.glsl";
-    const char fragmentMeshPath[] = "C://Code//oibvh//shaders//mesh_fragment_shader.glsl";
+    const char vertexMeshPath[] = "..//..//..//shaders//mesh_vertex_shader.glsl";
+    const char fragmentMeshPath[] = "..//..//..//shaders//mesh_fragment_shader.glsl";
     Shader shaderMesh(vertexMeshPath, fragmentMeshPath);
 
-    const char vertexBVHPath[] = "C://Code//oibvh//shaders//bvh_vertex_shader.glsl";
-    const char fragmentBVHPath[] = "C://Code//oibvh//shaders//bvh_fragment_shader.glsl";
+    const char vertexBVHPath[] = "..//..//..//shaders//bvh_vertex_shader.glsl";
+    const char fragmentBVHPath[] = "..//..//..//shaders//bvh_fragment_shader.glsl";
     Shader shaderBVH(vertexBVHPath, fragmentBVHPath);
 
     // tell stb_image.h to flip loaded texture's on the y-axis (before loading model).
     stbi_set_flip_vertically_on_load(true);
-    Model bunny1("C://Code//oibvh//objects//bunny.obj");
-    // Model model("C://Code//oibvh//objects//dragon.obj");
+    Model bunny1("..//..//..//objects//bunny.obj");
+    // Model model("..//..//..//objects//dragon.obj");
     std::shared_ptr<OibvhTree> treeBunny1 = std::make_shared<OibvhTree>(bunny1.m_meshes[0]);
     // oibvhTree tree(meshSPtr);
     treeBunny1->build();
@@ -281,7 +281,7 @@ int main(int, char**)
 
         if (detect_collision)
         {
-            scene.detectCollision();
+            scene.detectCollision(DeviceType::GPU0, 4, 3);
             // simpleCollide.detect();
 
             if (draw_collision)
