@@ -112,23 +112,6 @@ __global__ void oibvh_tree_construction_kernel(unsigned int tEntryLev,
     {
         aabbCache[tCacheOffset] = leftAABB;
     }
-    // printf("%u %u %u %u %u %u %u %u %u %u\n",
-    //        tLevPos,
-    //        tRealCount,
-    //        tSubTreeSize,
-    //        tCacheOffset,
-    //        primitiveCountNextPower2,
-    //        tLeafLev,
-    //        virtualLeafCount,
-    //        tMostRightRealIdx,
-    //        tMostLeftRealIdx,
-    //        tRealIdx);
-    // printf("%u %u %u %u %u\n",
-    //       tNextLevelRealCount,
-    //       tChildMostRightRealIdx,
-    //       tChildMostLeftRealIdx,
-    //       tChildLeftRealIdx,
-    //       tChildRightRealIdx);
     aabbs[tRealIdx] = aabbCache[tCacheOffset];
 
     const unsigned int tLevMin = tEntryLev - ilog2(group_size);
@@ -187,12 +170,7 @@ __global__ void oibvh_tree_construction_kernel2(unsigned int tEntryLev,
     const unsigned int virtualLeafCount = primitiveCountNextPower2 - primitive_count;
     unsigned int tImplicitIdx = (1 << ilog2(next_power_of_two(tRealCount))) - 1 + tLevPos;
     unsigned int tRealIdx = oibvh_implicit_to_real(tImplicitIdx, tLeafLev, virtualLeafCount);
-#if 0
-    if (tImplicitIdx != oibvh_real_to_implicit(tRealIdx, tLeafLev, virtualLeafCount))
-    {
-        printf("realIdx can't map back to implicitIdx\n");
-    }
-#endif
+
     __shared__ aabb_box_t aabbCache[SUBTREESIZE_MAX];
     __shared__ unsigned int askCache[SUBTREESIZE_MAX / 2 + 1];
 
@@ -207,23 +185,6 @@ __global__ void oibvh_tree_construction_kernel2(unsigned int tEntryLev,
     {
         aabbCache[tCacheOffset] = leftAABB;
     }
-    // printf("%u %u %u %u %u %u %u %u %u %u\n",
-    //        tLevPos,
-    //        tRealCount,
-    //        tSubTreeSize,
-    //        tCacheOffset,
-    //        primitiveCountNextPower2,
-    //        tLeafLev,
-    //        virtualLeafCount,
-    //        tMostRightRealIdx,
-    //        tMostLeftRealIdx,
-    //        tRealIdx);
-    // printf("%u %u %u %u %u\n",
-    //       tNextLevelRealCount,
-    //       tChildMostRightRealIdx,
-    //       tChildMostLeftRealIdx,
-    //       tChildLeftRealIdx,
-    //       tChildRightRealIdx);
     aabbs[tRealIdx] = aabbCache[tCacheOffset];
 
     const unsigned int tLevMin = tEntryLev - ilog2(group_size);
@@ -250,12 +211,7 @@ __global__ void oibvh_tree_construction_kernel2(unsigned int tEntryLev,
         }
         tRealIdx = oibvh_implicit_to_real(tImplicitIdx, tLeafLev, virtualLeafCount);
         aabbs[tRealIdx] = aabbCache[tCacheOffset];
-#if 0
-        if (tImplicitIdx != oibvh_real_to_implicit(tRealIdx, tLeafLev, virtualLeafCount))
-        {
-            printf("realIdx can't map back to implicitIdx\n");
-        }
-#endif
+
         if (tLev == 0)
             return;
         tLev--;

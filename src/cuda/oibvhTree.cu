@@ -215,19 +215,9 @@ void OibvhTree::refit()
         calculate_aabb_kernel<<<gridSize, blockSize>>>(
             d_faces, d_positions, primitive_count, d_aabbs + oibvh_internal_node_count);
     });
-    // std::cout << "Primitive AABBs calculation took: " << elapsed_ms << "ms" << std::endl;
-
-    // std::cout << "kerenl count: " << m_scheduleParams.size() << std::endl;
 
     for (int k = 0; k < m_scheduleParams.size(); k++)
     {
-        // std::cout << "kernel" << k << std::endl;
-        // std::cout << "  entry level: " << m_scheduleParams[k].m_entryLevel << std::endl;
-        // std::cout << "  real nodes: " << m_scheduleParams[k].m_realCount << std::endl;
-        // std::cout << "  total threads: " << m_scheduleParams[k].m_threads << std::endl;
-        // std::cout << "  group size: " << m_scheduleParams[k].m_threadsPerGroup << std::endl;
-        // std::cout << "  group count: " << m_scheduleParams[k].m_threads / m_scheduleParams[k].m_threadsPerGroup
-        //           << std::endl;
         elapsed_ms = kernelLaunch([&]() {
             dim3 blockSize = dim3(m_scheduleParams[k].m_threadsPerGroup);
             dim3 gridSize = dim3(m_scheduleParams[k].m_threads / m_scheduleParams[k].m_threadsPerGroup);
@@ -237,13 +227,9 @@ void OibvhTree::refit()
                                                                     m_scheduleParams[k].m_threadsPerGroup,
                                                                     d_aabbs);
         });
-        // std::cout << "  oibvh contruct kernel took: " << elapsed_ms << "ms" << std::endl;
     }
 
     hostMemcpy(m_aabbTree.data(), d_aabbs, oibvh_size);
-    //cudaFree(d_positions);
-    //cudaFree(d_faces);
-    //cudaFree(d_aabbs);
 
     m_convertDone = false;
 }
@@ -257,17 +243,6 @@ void OibvhTree::build()
     std::cout << "device id: " << dev << std::endl;
     const unsigned int primitive_count = m_faces.size();
     const unsigned int vertex_count = m_positions.size();
-#if 0
-    // std::cout << oibvh_get_size(2147483647) << std::endl;
-    int sum = 262144 * 2 - 1;
-    int a = 118098;
-    while (a)
-    {
-        sum -= a;
-        a /= 2;
-    }
-    std::cout << "sum: " << sum << std::endl;
-#endif
     const unsigned int oibvh_size = oibvh_get_size(primitive_count);
 
     const unsigned int oibvh_internal_node_count = oibvh_size - primitive_count;

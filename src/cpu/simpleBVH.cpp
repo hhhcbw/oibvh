@@ -133,11 +133,6 @@ std::shared_ptr<simple_bvh_node_t> SimpleBVH::recursiveBuild(int leftPrim, int r
             return node;
         }
         glm::uvec3 face = m_faces[leftPrim];
-        // glm::vec3 v0 = m_positions[face.x];
-        // glm::vec3 v1 = m_positions[face.y];
-        // glm::vec3 v2 = m_positions[face.z];
-        // node->m_aabb.m_minimum = glm::min(glm::min(v0, v1), v2);
-        // node->m_aabb.m_maximum = glm::max(glm::max(v0, v1), v2);
         node->m_aabb.merge(aabb_box_t{m_positions[face[0]], m_positions[face[0]]});
         node->m_aabb.merge(aabb_box_t{m_positions[face[1]], m_positions[face[1]]});
         node->m_aabb.merge(aabb_box_t{m_positions[face[2]], m_positions[face[2]]});
@@ -145,7 +140,6 @@ std::shared_ptr<simple_bvh_node_t> SimpleBVH::recursiveBuild(int leftPrim, int r
         return node;
     }
 
-    // int mid = (leftPrim + rightPrim) / 2;
     int count = rightPrim - leftPrim + 1;
     int mid = leftPrim + next_power2(count) / 2 - 1;
     assert(mid >= leftPrim);

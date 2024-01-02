@@ -186,26 +186,7 @@ void Scene::detectCollision(const DeviceType deviceType, const unsigned int entr
 
 void Scene::detectCollisionOnCPU()
 {
-    if (m_detectTimes < OUTPUT_TIMES)
-    {
-        std::cout << "---Detecting collision on cpu---" << std::endl;
-    }
-
-    // prepare
-    std::stack<bvtt_node_t> bvttNodes;
-    assert(!m_bvtts.empty());
-    for (const auto bvtt : m_bvtts)
-    {
-        bvttNodes.push(bvtt);
-    }
-
-    std::vector<tri_pair_node_t> triPairs;
     // TODO: cpu collision detection
-    //
-    // while (!bvttNodes.empty())
-    //{
-
-    //}
 }
 
 void Scene::expandBvttNodes(const unsigned int entryLevel)
@@ -268,10 +249,6 @@ void Scene::detectCollisionOnGPU(const unsigned int deviceId,
     unsigned int* d_nextBvttSize;
     unsigned int* d_triPairCount;
 
-    // deviceMalloc(&d_src, 2000000);
-    // deviceMalloc(&d_dst, 2000000);
-    // deviceMalloc(&d_aabbs, m_aabbCount);
-    // deviceMalloc(&d_triPairs, 2000000);
     deviceMalloc(&d_aabbOffsets, m_aabbOffsets.size());
     deviceMalloc(&d_primOffsets, m_primOffsets.size());
     deviceMalloc(&d_primCounts, m_primCounts.size());
@@ -332,9 +309,6 @@ void Scene::detectCollisionOnGPU(const unsigned int deviceId,
             std::swap(d_src, d_dst);
         }
     }
-    // cudaFree(d_src);
-    // cudaFree(d_dst);
-    // cudaFree(d_aabbs);
     cudaFree(d_aabbOffsets);
     cudaFree(d_primCounts);
     cudaFree(d_nextBvttSize);
@@ -346,19 +320,6 @@ void Scene::detectCollisionOnGPU(const unsigned int deviceId,
         std::cout << "All treversal kernels took: " << elapsed_traversal_ms << "ms" << std::endl;
         std::cout << "Candidate collision triangle pairs count: " << h_triPairCount << std::endl;
     }
-
-#if 0
-    // log candidate triangle pairs
-    tri_pair_node_t* h_triPairs;
-    hostMalloc(&h_triPairs, h_triPairCount);
-    hostMemcpy(h_triPairs, d_triPairs, h_triPairCount);
-    std::ofstream outfile;
-    outfile.open("C://Code//oibvh//logs//candidate_tri_pairs_log.txt");
-    for (int i = 0; i < 100; i++)
-    {
-        outfile << 
-    }
-#endif
 
 // narrow phase
 #if 0
@@ -423,10 +384,7 @@ void Scene::detectCollisionOnGPU(const unsigned int deviceId,
     int_tri_pair_node_t* d_intTriPairs = m_deviceIntTriPairs;
     unsigned int* d_intTriPairCount; // Count of intersected triangles pair
     unsigned int* d_vertexOffsets;
-    // deviceMalloc(&d_primitives, m_primCount);
-    // deviceMalloc(&d_vertices, m_vertexCount);
     deviceMalloc(&d_vertexOffsets, m_vertexOffsets.size());
-    // deviceMalloc(&d_intTriPairs, 2000000);
     deviceMalloc(&d_intTriPairCount, 1);
 
     for (int i = 0; i < m_oibvhTrees.size(); i++)
@@ -481,12 +439,8 @@ void Scene::detectCollisionOnGPU(const unsigned int deviceId,
     }
 #endif
 
-    // cudaFree(d_triPairs);
     cudaFree(d_primOffsets);
     cudaFree(d_triPairCount);
-    // cudaFree(d_primitives);
-    // cudaFree(d_vertices);
     cudaFree(d_vertexOffsets);
-    // cudaFree(d_intTriPairs);
     cudaFree(d_intTriPairCount);
 }

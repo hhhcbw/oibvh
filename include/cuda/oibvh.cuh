@@ -146,14 +146,6 @@ __device__ __host__ inline bool
 oibvh_have_rchild(const unsigned int implicitIdx, const unsigned int leafLev, const unsigned int vl)
 {
     const unsigned int nextLevel = ilog2(implicitIdx + 1) + 1;
-#if 0
-    printf("%u %u %u %u %u\n",
-           nextLevel,
-           leafLev,
-           primCount,
-           2 * implicitIdx + 4 - (1 << nextLevel),
-           oibvh_level_real_node_count(nextLevel, leafLev, vl));
-#endif
     if (2 * implicitIdx + 4 <= (1 << nextLevel) + oibvh_level_real_node_count(nextLevel, leafLev, vl))
     {
         return true;
