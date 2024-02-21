@@ -21,6 +21,7 @@
 #include "utils/model.h"
 #include "utils/camera.h"
 #include "cuda/oibvhTree.cuh"
+#include "cuda/optixCollide.cuh"
 #include "cuda/scene.cuh"
 #include "cpu/simpleBVH.h"
 #include "cpu/simpleCollide.h"
@@ -152,6 +153,8 @@ int main(int, char**)
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
+
+    OptixCollide();
     // Main loop
     while (!glfwWindowShouldClose(window))
     {

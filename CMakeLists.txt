@@ -20,6 +20,11 @@ list (APPEND THIRD_INCLUDE_DIR ${THIRD_BASE_DIR} ${GLAD_INCLUDE_DIR} ${GLFW_INCL
 message (STATUS "third include directory: ${THIRD_INCLUDE_DIR}")
 list(APPEND THIRD_LIBS ${GLAD_LIBRARIES} ${GLFW_LIBRARIES} ${IMGUIGLFWOPENGL3_LIBRARIES})
 
+set(owl_dir ${PROJECT_SOURCE_DIR}/owl)
+add_subdirectory(${owl_dir} EXCLUDE_FROM_ALL)
+message(STATUS "CMake module path: ${CMAKE_MODULE_PATH}")
+find_package(OptiX REQUIRED VERSION 7.4)
+
 set (oibvh_INCLUDE_DIR ${oibvh_BASE_DIR}/include)
 set (oibvh_SRC_DIR ${oibvh_BASE_DIR}/src)
 
@@ -30,6 +35,24 @@ aux_source_directory(${oibvh_SRC_DIR}/cpu oibvh_SRC)
 message(STATUS "oibvh source files: ${oibvh_SRC}")
 
 add_executable(oibvh ${oibvh_SRC})
-target_include_directories(oibvh PUBLIC ${oibvh_INCLUDE_DIR} ${THIRD_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
+message(STATUS "${OptiX_INCLUDE} + ${OWL_INCLUDES}")
+target_include_directories(oibvh PUBLIC ${oibvh_INCLUDE_DIR} ${THIRD_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS} ${OptiX_INCLUDE} ${OWL_INCLUDES})
 message(STATUS "third libs: ${THIRD_LIBS}")
 target_link_libraries(oibvh PUBLIC ${THIRD_LIBS})
+
+embed_ptx(
+  OUTPUT_TARGET
+  deviceCode-ptx
+  PTX_LINK_LIBRARIES
+  owl::owl
+  SOURCES
+  ${oibvh_BASE_DIR}/ptx/deviceCode.cu
+)
+
+target_link_libraries(oibvh
+  PRIVATE
+  deviceCode-ptx
+  owl::owl
+  owl_viewer
+  OptiX::OptiX
+)
