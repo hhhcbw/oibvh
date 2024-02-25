@@ -22,23 +22,19 @@
 /* variables for the triangle mesh geometry */
 struct TrianglesGeomData
 {
-    ///*! array/buffer of vertex indices */
-    // owl::vec3ui* m_indices;
-    ///*! array/buffer of vertex positions */
-    // owl::vec3f* m_vertices;
     owl::vec2ui* m_indexPairs;
     unsigned int* m_count;
+    unsigned int m_size;
+    unsigned int* m_faceCounts;
 };
 
 /* variables for the auxilury triangle mesh geometry */
 struct AuxTrianglesGeomData
 {
-    ///*! array/buffer of vertex indices */
-    // owl::vec3ui* m_indices;
-    ///*! array/buffer of vertex positions */
-    // owl::vec3f* m_vertices;
     owl::vec2ui* m_indexPairs;
     unsigned int* m_count;
+    unsigned int m_size;
+    unsigned int* m_faceCounts;
 };
 
 /* variables for the ray generation program */

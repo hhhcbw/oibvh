@@ -100,6 +100,8 @@ int main(int, char**)
     bool rotate_bunny2 = false;
     bool detect_collision = false;
     bool draw_collision = false;
+    bool detect_optixCollision = false;
+    bool draw_optixCollision = false;
     bool check_result = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
@@ -154,7 +156,9 @@ int main(int, char**)
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
 
-    OptixCollide();
+    OptixCollide optixCollide(std::vector<std::shared_ptr<Mesh>>{bunny1.m_meshes[0], bunny2.m_meshes[0]});
+    optixCollide.init();
+
     // Main loop
     while (!glfwWindowShouldClose(window))
     {
@@ -191,6 +195,9 @@ int main(int, char**)
             ImGui::Checkbox("Detect collision", &detect_collision);
             ImGui::SameLine();
             ImGui::Checkbox("Draw collision", &draw_collision);
+            ImGui::Checkbox("Detec optix collision", &detect_optixCollision);
+            ImGui::SameLine();
+            ImGui::Checkbox("Draw optix collision", &draw_optixCollision);
             ImGui::Checkbox("Check result", &check_result);
             ImGui::Checkbox("Free view", &free_view);
 
@@ -300,6 +307,31 @@ int main(int, char**)
                 shaderIntTri.setMat4("model", modelMat);
 
                 scene.draw();
+                // simpleCollide.draw();
+
+                shaderIntTri.deactivate();
+            }
+        }
+
+        if (detect_optixCollision)
+        {
+            optixCollide.refit();
+            optixCollide.detect();
+
+            if (draw_optixCollision)
+            {
+                shaderIntTri.activate();
+                // view/projection transformations
+                glm::mat4 projection =
+                    glm::perspective(glm::radians(camera.getZoom()), (float)display_w / (float)display_h, 0.1f, 100.0f);
+                glm::mat4 view = camera.getViewMatrix();
+                shaderIntTri.setMat4("view", view);
+                shaderIntTri.setMat4("projection", projection);
+                glm::mat4 modelMat = glm::mat4(1.0f);
+                shaderIntTri.setMat4("model", modelMat);
+
+                // scene.draw();
+                optixCollide.draw();
                 // simpleCollide.draw();
 
                 shaderIntTri.deactivate();

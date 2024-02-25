@@ -17,16 +17,39 @@
 #include "../include/cpu/deviceCode.h"
 #include <optix_device.h>
 
+__device__ inline int getMeshID(int faceIndex, unsigned int size, unsigned int* faceCounts)
+{
+    int l = 0;
+    int r = size - 1;
+    int ans = 0;
+    while (l <= r)
+    {
+        int mid = (l + r) / 2;
+        if (faceCounts[mid] == faceIndex)
+        {
+            return mid;
+        }
+        else if (faceCounts[mid] < faceIndex)
+        {
+            ans = mid;
+            l = mid + 1;
+        }
+        else
+            r = mid - 1;
+    }
+    return ans;
+}
+
 OPTIX_RAYGEN_PROGRAM(RayGen)()
 {
     const RayGenData& self = owl::getProgramData<RayGenData>();
     const owl::vec2i pixelID = owl::getLaunchIndex();
-    //printf("%d\n", pixelID.x);
     owl::vec3ui indexes = self.m_indices[pixelID.x];
     owl::vec3f v[3];
     v[0] = self.m_vertices[indexes.x];
     v[1] = self.m_vertices[indexes.y];
     v[2] = self.m_vertices[indexes.z];
+    // printf("%u %u %u %u\n", pixelID.x, indexes.x, indexes.y, indexes.z);
 
     owl::Ray ray;
     owl::vec3f prd;
@@ -34,16 +57,18 @@ OPTIX_RAYGEN_PROGRAM(RayGen)()
     {
         ray.origin = v[i];
         ray.direction = owl::normalize(v[(i + 1) % 3] - v[i]);
+        ray.tmax = owl::length(v[(i + 1) % 3] - v[i]) + 0.0001f;
         owl::traceRay(self.m_world, ray, prd);
     }
 
-    owl::vec3f norm = owl::normalize(cross(v[1] - v[0], v[2] - v[0]));
-    for (int i = 0; i < 3; i++)
-    {
-        ray.origin = v[i] - 0.000001f * norm;
-        ray.direction = norm;
-        owl::traceRay(self.m_world, ray, prd);
-    }
+    //owl::vec3f norm = owl::normalize(cross(v[1] - v[0], v[2] - v[0]));
+    //for (int i = 0; i < 3; i++)
+    //{
+    //    ray.origin = v[i] - 0.000001f * norm;
+    //    ray.direction = norm;
+    //    ray.tmax = 0.0000011f;
+    //    owl::traceRay(self.m_world, ray, prd);
+    //}
 }
 
 OPTIX_ANY_HIT_PROGRAM(AnyHit)()
@@ -51,8 +76,14 @@ OPTIX_ANY_HIT_PROGRAM(AnyHit)()
     const TrianglesGeomData& self = owl::getProgramData<TrianglesGeomData>();
     const int primID = optixGetPrimitiveIndex();
     const owl::vec2i pixelID = owl::getLaunchIndex();
+    const int meshID1 = getMeshID(primID, self.m_size, self.m_faceCounts);
+    const int meshID2 = getMeshID(pixelID.x, self.m_size, self.m_faceCounts);
+    if (meshID1 == meshID2)
+	{
+		return;
+	}
     const unsigned int idx = atomicAdd(self.m_count, 1);
-    //printf("idx:%u %u %u\n", idx, primID, pixelID.x);
+    // printf("idx:%u %u %u\n", idx, primID, pixelID.x);
     self.m_indexPairs[idx] = owl::vec2ui{pixelID.x, primID};
 }
 
@@ -61,6 +92,12 @@ OPTIX_ANY_HIT_PROGRAM(AuxAnyHit)()
     const AuxTrianglesGeomData& self = owl::getProgramData<AuxTrianglesGeomData>();
     const int primID = optixGetPrimitiveIndex();
     const owl::vec2i pixelID = owl::getLaunchIndex();
+    const int meshID1 = getMeshID(primID / 3, self.m_size, self.m_faceCounts);
+    const int meshID2 = getMeshID(pixelID.x, self.m_size, self.m_faceCounts);
+    if (meshID1 == meshID2)
+    {
+        return;
+    }
 
     // check hit point is on the true triangle
     const float2 barycentrics = optixGetTriangleBarycentrics();
@@ -69,7 +106,6 @@ OPTIX_ANY_HIT_PROGRAM(AuxAnyHit)()
         return;
 
     const unsigned int idx = atomicAdd(self.m_count, 1);
-    //printf("idx:%u %u %u\n", idx, primID / 3, pixelID.x);
+    // printf("idx:%u %u %u\n", idx, primID / 3, pixelID.x);
     self.m_indexPairs[idx] = owl::vec2ui{pixelID.x, primID / 3};
 }
-
