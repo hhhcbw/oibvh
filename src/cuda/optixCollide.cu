@@ -205,7 +205,7 @@ void OptixCollide::init()
     }
     // printf("sum: %u\n", sum);
     std::ofstream outfile;
-    outfile.open("C://Users//Administrator//Projects//VisualStudio//oibvh//logs//tripair_log.txt");
+    outfile.open("C://Code//VisualStudio//oibvh//logs//tripair_log.txt");
     for (int i = 0; i < sum; i++)
     {
         outfile << "(" << intTriPairs[i].x << "," << intTriPairs[i].y << ")" << std::endl;

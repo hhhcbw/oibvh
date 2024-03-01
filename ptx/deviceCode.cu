@@ -101,8 +101,8 @@ OPTIX_ANY_HIT_PROGRAM(AuxAnyHit)()
 
     // check hit point is on the true triangle
     const float2 barycentrics = optixGetTriangleBarycentrics();
-    if (1.0f - barycentrics.y >= 2.0f * barycentrics.x + 0.0001f ||
-        1.0f - barycentrics.y <= 2.0f * barycentrics.x - 0.0001f)
+    if (1.0f - barycentrics.y >= 2.0f * barycentrics.x + 0.01f ||
+        1.0f - barycentrics.y <= 2.0f * barycentrics.x - 0.01f)
         return;
 
     const unsigned int idx = atomicAdd(self.m_count, 1);

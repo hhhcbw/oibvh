@@ -415,9 +415,9 @@ void Scene::detectCollisionOnGPU(const unsigned int deviceId,
     hostMemcpy(&m_intTriPairCount, d_intTriPairCount, 1);
     m_intTriPairs.resize(m_intTriPairCount);
     hostMemcpy(m_intTriPairs.data(), d_intTriPairs, m_intTriPairCount);
-    std::sort(m_intTriPairs.begin(), m_intTriPairs.end(), [](int_tri_pair_node_t pair1, int_tri_pair_node_t pair2) {
-        return pair1.m_triIndex[0] < pair2.m_triIndex[0];
-    });
+    //std::sort(m_intTriPairs.begin(), m_intTriPairs.end(), [](int_tri_pair_node_t pair1, int_tri_pair_node_t pair2) {
+    //    return pair1.m_triIndex[0] < pair2.m_triIndex[0];
+    //});
     if (m_detectTimes % 100 == 0)
     {
         std::cout << "Triangle intersect kernel took: " << elapsed_ms << "ms" << std::endl;
